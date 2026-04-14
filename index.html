@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
       --primary-color: #2e3192; 
@@ -231,14 +232,36 @@
   // Initialisation du localStorage
   if (!localStorage.getItem('agents')) localStorage.setItem('agents', JSON.stringify(['JEAN DUPONT', 'MARIE CLAIRE']));
   if (!localStorage.getItem('pointages')) localStorage.setItem('pointages', JSON.stringify([]));
+  // --- CONFIGURATION SUPABASE ---
+  const SUPABASE_URL = 'VOTRE_URL_SUPABASE';
+  const SUPABASE_KEY = 'VOTRE_CLE_ANON_SUPABASE';
+  const SUPABASE_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_QunC50RUP8s7CxdBg9eDWg_DKZLFWmJ';
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // La sécurité par appareil reste en localStorage car elle est liée à la machine physique
   if (!localStorage.getItem('device_logs')) localStorage.setItem('device_logs', JSON.stringify({})); // Journal des actions par appareil
   if (!localStorage.getItem('logRetentionDays')) localStorage.setItem('logRetentionDays', '30'); // Durée de rétention par défaut
   let DEVICE_LOG_RETENTION_DAYS = parseInt(localStorage.getItem('logRetentionDays')); // Garder les logs pendant X jours
 
   function getAgents() { return JSON.parse(localStorage.getItem('agents')); }
   function getPointages() {
+  async function getAgents() { 
+    const { data, error } = await _supabase.from('agents').select('name');
+    if (error) console.error(error);
+    return data ? data.map(a => a.name) : [];
+  }
+
+  async function getPointages() {
     try {
       return JSON.parse(localStorage.getItem('pointages') || '[]');
+      const { data, error } = await _supabase.from('pointages').select('*');
+      if (error) throw error;
+      // Mapper pour correspondre à l'ancien format d'objet
+      return data.map(p => ({
+        ...p,
+        isoDate: p.iso_date
+      }));
     } catch (e) {
       console.error("Erreur lors de la lecture des pointages depuis localStorage:", e);
       return [];
@@ -283,6 +306,8 @@
   // Fonction centralisée pour rafraîchir toutes les listes d'agents
   function refreshAgentLists() {
     const agents = getAgents();
+  async function refreshAgentLists() {
+    const agents = await getAgents();
     
     // 1. Liste déroulante du pointage (Vue Agent)
     const agentSelect = document.getElementById('agentName');
@@ -342,6 +367,7 @@
     
     // Vérifier si les RH ont déjà fait une entrée manuelle pour cet agent aujourd'hui
     let logs = getPointages();
+    let logs = await getPointages();
     const existingManualEntry = logs.find(l => l.date === dateKey && l.name === name && (l.status === "ABSENCE (TARDIF)" || l.status === "ABSENCE CONSTATED" || l.status === "RETARD"));
     if (existingManualEntry) {
       return alert(`Pointage impossible : Une entrée manuelle (${existingManualEntry.status}) existe déjà pour vous aujourd'hui. Veuillez contacter les RH.`);
@@ -359,11 +385,21 @@
       
       entry = { date: dateKey, isoDate: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       logs.push(entry); // Ajout de la nouvelle entrée
+      const { error } = await _supabase.from('pointages').insert([entry]);
+      if (error) return alert("Erreur serveur lors du pointage.");
+      
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
       if (type === 'ARRIVEE') return alert("Arrivée déjà pointée.");
       entry[type.toLowerCase()] = timeStr;
       if (type === 'DEPART') entry.total = calculerHeures(entry);
+      const updateData = { [type.toLowerCase()]: timeStr };
+      if (type === 'DEPART') {
+        entry[type.toLowerCase()] = timeStr;
+        updateData.total = calculerHeures(entry);
+      }
+      const { error } = await _supabase.from('pointages').update(updateData).eq('id', entry.id);
+      if (error) return alert("Erreur serveur lors de la mise à jour.");
     }
 
     // Enregistrer l'action pour cet appareil
@@ -378,11 +414,14 @@
   }
 
   function loadAgentTodayStats() {
+  async function loadAgentTodayStats() {
     const name = document.getElementById('agentName').value;
     if(!name) return;
     
     const dateKey = new Date().toLocaleDateString('fr-FR');
     const entry = getPointages().find(l => l.date === dateKey && l.name === name);
+    const pointages = await getPointages();
+    const entry = pointages.find(l => l.date === dateKey && l.name === name);
     const container = document.getElementById('agentHistory');
     document.getElementById('agentTodaySection').classList.remove('hidden');
     
