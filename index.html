@@ -229,46 +229,35 @@
   let userIsAdmin = false;
   const ADMIN_PWD = "ADMIN123";
 
-  // Initialisation du localStorage
-  if (!localStorage.getItem('agents')) localStorage.setItem('agents', JSON.stringify(['JEAN DUPONT', 'MARIE CLAIRE']));
-  if (!localStorage.getItem('pointages')) localStorage.setItem('pointages', JSON.stringify([]));
   // --- CONFIGURATION SUPABASE ---
-  const SUPABASE_URL = 'VOTRE_URL_SUPABASE';
-  const SUPABASE_KEY = 'VOTRE_CLE_ANON_SUPABASE';
-  const SUPABASE_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_QunC50RUP8s7CxdBg9eDWg_DKZLFWmJ';
-  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const S_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
+  const S_KEY = 'sb_publishable_QunC50RUP8s7CxdBg9eDWg_DKZLFWmJ';
+  const _supabase = supabase.createClient(S_URL, S_KEY);
 
   // La sécurité par appareil reste en localStorage car elle est liée à la machine physique
   if (!localStorage.getItem('device_logs')) localStorage.setItem('device_logs', JSON.stringify({})); // Journal des actions par appareil
   if (!localStorage.getItem('logRetentionDays')) localStorage.setItem('logRetentionDays', '30'); // Durée de rétention par défaut
   let DEVICE_LOG_RETENTION_DAYS = parseInt(localStorage.getItem('logRetentionDays')); // Garder les logs pendant X jours
 
-  function getAgents() { return JSON.parse(localStorage.getItem('agents')); }
-  function getPointages() {
   async function getAgents() { 
-    const { data, error } = await _supabase.from('agents').select('name');
+    const { data, error } = await _supabase.from('agents').select('name').order('name');
     if (error) console.error(error);
     return data ? data.map(a => a.name) : [];
   }
 
   async function getPointages() {
     try {
-      return JSON.parse(localStorage.getItem('pointages') || '[]');
-      const { data, error } = await _supabase.from('pointages').select('*');
+      const { data, error } = await _supabase.from('pointages').select('*').order('date', { ascending: false });
       if (error) throw error;
-      // Mapper pour correspondre à l'ancien format d'objet
       return data.map(p => ({
         ...p,
         isoDate: p.iso_date
       }));
     } catch (e) {
-      console.error("Erreur lors de la lecture des pointages depuis localStorage:", e);
+      console.error("Erreur lors de la lecture des pointages depuis Supabase:", e);
       return [];
     }
   }
-  function saveAgents(data) { localStorage.setItem('agents', JSON.stringify(data)); }
-  function savePointages(data) { localStorage.setItem('pointages', JSON.stringify(data)); }
   
   function getDeviceLogs() {
     try {
@@ -291,7 +280,7 @@
     const h = now.getHours() + (now.getMinutes() / 60);
     const isWeekend = (day === 0 || day === 6);
 
-    const deviceLogs = JSON.parse(localStorage.getItem('device_logs') || '{}');
+    const deviceLogs = getDeviceLogs();
     const todayActions = deviceLogs[dateKey] || [];
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
@@ -304,14 +293,12 @@
   }
 
   // Fonction centralisée pour rafraîchir toutes les listes d'agents
-  function refreshAgentLists() {
-    const agents = getAgents();
   async function refreshAgentLists() {
     const agents = await getAgents();
     
     // 1. Liste déroulante du pointage (Vue Agent)
     const agentSelect = document.getElementById('agentName');
-    const currentSelectedAgent = agentSelect.value;
+    const currentVal = agentSelect.value;
     agentSelect.innerHTML = '<option value="" disabled selected>Choisir un profil...</option>';
     agents.forEach(agent => {
       const option = document.createElement('option');
@@ -319,16 +306,17 @@
       option.textContent = agent;
       agentSelect.appendChild(option);
     });
-    if (currentSelectedAgent && agents.includes(currentSelectedAgent)) agentSelect.value = currentSelectedAgent;
-    else if (agents.length > 0 && !currentSelectedAgent) agentSelect.value = ""; // S'assurer que "Choisir un profil..." est sélectionné si aucun agent n'est choisi
+    if (currentVal && agents.includes(currentVal)) agentSelect.value = currentVal;
 
     // 2. Liste du personnel (Vue Admin)
     const listPersonnel = document.getElementById('listPersonnel');
-    if (listPersonnel) { // Vérifier si l'élément existe (visible uniquement en vue Admin)
+    if (listPersonnel) {
       listPersonnel.innerHTML = agents.map(a => `
         <li class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 bg-light rounded-3">
           <span class="fw-bold text-dark">${a}</span>
-          <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')"><i class="bi bi-trash"></i></button>
+          <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')">
+            <i class="bi bi-trash"></i>
+          </button>
         </li>
       `).join('');
     }
@@ -357,17 +345,17 @@
     }
   }
 
-  function effectuerPointage(type) {
+  async function effectuerPointage(type) {
     const name = document.getElementById('agentName').value;
-    if (!name || !getAgents().includes(name)) return alert("Veuillez sélectionner un agent valide.");
+    const agents = await getAgents();
+    if (!name || !agents.includes(name)) return alert("Veuillez sélectionner un agent valide.");
 
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
     const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     
     // Vérifier si les RH ont déjà fait une entrée manuelle pour cet agent aujourd'hui
-    let logs = getPointages();
-    let logs = await getPointages();
+    const logs = await getPointages();
     const existingManualEntry = logs.find(l => l.date === dateKey && l.name === name && (l.status === "ABSENCE (TARDIF)" || l.status === "ABSENCE CONSTATED" || l.status === "RETARD"));
     if (existingManualEntry) {
       return alert(`Pointage impossible : Une entrée manuelle (${existingManualEntry.status}) existe déjà pour vous aujourd'hui. Veuillez contacter les RH.`);
@@ -407,19 +395,15 @@
     if (!deviceLogs[dateKey]) deviceLogs[dateKey] = [];
     deviceLogs[dateKey].push(type);
     saveDeviceLogs(deviceLogs);
-
-    savePointages(logs);
     showFeedback(`Pointage ${type} enregistré à ${timeStr}`);
     loadAgentTodayStats();
   }
 
-  function loadAgentTodayStats() {
   async function loadAgentTodayStats() {
     const name = document.getElementById('agentName').value;
     if(!name) return;
     
     const dateKey = new Date().toLocaleDateString('fr-FR');
-    const entry = getPointages().find(l => l.date === dateKey && l.name === name);
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
     const container = document.getElementById('agentHistory');
@@ -541,12 +525,10 @@
     }
   }
 
-  function loadAdminData() {
+  async function loadAdminData() {
     loadReports();
     detecterAbsencesAutomatiques();
-    const list = document.getElementById('listPersonnel');
-    // listPersonnel, filterAgent, manualAgentSelect sont maintenant gérés par refreshAgentLists()
-    refreshAgentLists(); 
+    await refreshAgentLists(); 
     document.getElementById('logRetentionDays').value = DEVICE_LOG_RETENTION_DAYS; // Afficher la valeur actuelle
   }
 
@@ -559,50 +541,45 @@
     if (id === 'tab-reports') {
       loadReports(); // Recharger les rapports si on bascule sur cet onglet
     } else if (id === 'tab-agents') {
-      // Initialisation des champs de pointage manuel
-      const manualAgentSelect = document.getElementById('manualAgentSelect');
-      manualAgentSelect.innerHTML = getAgents().map(a => `<option>${a}</option>`).join('');
-      document.getElementById('manualDate').valueAsDate = new Date();
-      refreshAgentLists(); // S'assurer que les listes sont à jour
+      getAgents().then(agents => {
+        document.getElementById('manualAgentSelect').innerHTML = agents.map(a => `<option>${a}</option>`).join('');
+        document.getElementById('manualDate').valueAsDate = new Date();
+      });
     }
   }
 
   /**
    * Scanne les agents et crée un enregistrement d'absence pour ceux qui n'ont pas pointé après 11h30
    */
-  function detecterAbsencesAutomatiques() {
+  async function detecterAbsencesAutomatiques() {
     const now = new Date();
     const h = now.getHours() + (now.getMinutes() / 60);
     if (h < 11.5) return; // Trop tôt pour marquer les absences
 
     const dateKey = now.toLocaleDateString('fr-FR');
-    const agents = getAgents();
-    let logs = getPointages();
-    let aChange = false;
+    const agents = await getAgents();
+    let logs = await getPointages();
 
     agents.forEach(agent => {
-        // Ne pas écraser une entrée manuelle ou un pointage existant
-        const aDejaPointe = logs.find(l => l.date === dateKey && l.name === agent && l.status !== 'ABSENCE CONSTATED');
+        const aDejaPointe = logs.find(l => l.date === dateKey && l.name === agent);
 
         if (!aDejaPointe) {
-            logs.push({
+            const absence = {
                 date: dateKey,
-                isoDate: now.toISOString().split('T')[0],
+                iso_date: now.toISOString().split('T')[0],
                 name: agent,
                 arrivee: 'NON POINTE',
                 pause: '-', retour: '-', depart: '-',
                 status: 'ABSENCE CONSTATED',
-                total: 0
-            });
-            aChange = true;
+                total: '0'
+            };
+            _supabase.from('pointages').insert([absence]);
         }
     });
-
-    if (aChange) savePointages(logs);
   }
 
-  function loadReports() {
-    const logs = getPointages();
+  async function loadReports() {
+    const logs = await getPointages();
     const tbody = document.getElementById('reportData');
     let html = '', totalH = 0, countRetards = 0;
     
@@ -643,23 +620,20 @@
     `;
   }
 
-  function ajouterAgent() {
+  async function ajouterAgent() {
     const n = document.getElementById('newAgentName').value.trim().toUpperCase();
     if (n) {
-      let agents = getAgents();
+      const agents = await getAgents();
       if (agents.includes(n)) return alert("Existe déjà");
-      agents.push(n);
-      saveAgents(agents);
-      document.getElementById('newAgentName').value = ""; // Vider le champ
+      await _supabase.from('agents').insert([{ name: n }]);
+      document.getElementById('newAgentName').value = "";
       loadAdminData();
     }
   }
 
-  function supprimerAgent(n) {
+  async function supprimerAgent(n) {
     if (confirm(`Supprimer l'agent ${n} ?`)) {
-      let agents = getAgents().filter(a => a !== n);
-      saveAgents(agents);
-      // Supprimer aussi ses pointages ? (Optionnel)
+      await _supabase.from('agents').delete().eq('name', n);
       loadAdminData();
     }
   }
