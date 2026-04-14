@@ -76,7 +76,7 @@
   <div class="d-flex justify-content-between align-items-center mb-5">
     <div class="text-center w-100">
         <div class="bg-white d-inline-block p-3 rounded-circle shadow-sm mb-3">
-            <i class="bi bi-clock-fill text-primary h2 m-0"></i>
+            <img src="Capture d'écran.jpg" alt="Logo" class="img-fluid rounded-circle" style="max-width: 60px; height: auto;">
         </div>
         <h2 class="fw-bold text-dark">MON POINTAGE</h2>
     </div>
@@ -201,30 +201,38 @@
   function savePointages(data) { localStorage.setItem('pointages', JSON.stringify(data)); }
   
 
-  // Logique d'affichage dynamique selon l'heure
-  function checkTimeConstraints() {
+  // Horloge et Contraintes d'affichage
+  function updateClock() {
     const now = new Date();
+    document.getElementById('liveClock').innerText = now.toLocaleTimeString('fr-FR');
+    document.getElementById('liveDate').innerText = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    
     const day = now.getDay();
     const h = now.getHours() + (now.getMinutes() / 60);
     const isWeekend = (day === 0 || day === 6);
 
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
-    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', isWeekend || !(h >= 8 && h <= 10));
-    document.getElementById('btn-PAUSE').classList.toggle('hidden', isWeekend || !(h >= 12 && h <= 13));
-    document.getElementById('btn-RETOUR').classList.toggle('hidden', isWeekend || !(h >= 13.5 && h <= 14));
-    document.getElementById('btn-DEPART').classList.toggle('hidden', isWeekend || !(h > 14));
+    
+    const hasAgent = document.getElementById('agentName').value !== "";
+    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || !(h >= 10 && h <= 11.5));
+    document.getElementById('btn-PAUSE').classList.toggle('hidden', !hasAgent || isWeekend || !(h >= 14 && h <= 14.5));
+    document.getElementById('btn-RETOUR').classList.toggle('hidden', !hasAgent || isWeekend || !(h >= 15 && h <= 15.5));
+    document.getElementById('btn-DEPART').classList.toggle('hidden', !hasAgent || isWeekend);
+  }
 
-    // Remplir la liste déroulante des agents
+  function refreshAgentLists() {
+    const agents = getAgents();
     const agentSelect = document.getElementById('agentName');
-    const currentSelectedAgent = agentSelect.value; // Garder l'agent sélectionné si possible
-    agentSelect.innerHTML = '<option value="" disabled>Sélectionner un agent</option>';
-    getAgents().forEach(agent => {
+    const currentSelected = agentSelect.value;
+    
+    agentSelect.innerHTML = '<option value="" disabled selected>Choisir un profil...</option>';
+    agents.forEach(agent => {
       const option = document.createElement('option');
       option.value = agent;
       option.textContent = agent;
       agentSelect.appendChild(option);
     });
-    if (currentSelectedAgent && getAgents().includes(currentSelectedAgent)) agentSelect.value = currentSelectedAgent;
+    if (currentSelected && agents.includes(currentSelected)) agentSelect.value = currentSelected;
   }
 
   function effectuerPointage(type) {
@@ -234,13 +242,14 @@
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
     const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const h = now.getHours() + (now.getMinutes() / 60);
     
     let logs = getPointages();
     let entry = logs.find(l => l.date === dateKey && l.name === name);
 
     if (!entry) {
       if (type !== 'ARRIVEE') return alert("Vous devez d'abord pointer votre arrivée.");
-      const status = (now.getHours() >= 9) ? "RETARD" : "PRESENT";
+      const status = (h > 10.25) ? "RETARD" : "PRESENT"; // Retard après 10h15
       entry = { date: dateKey, isoDate: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       logs.push(entry);
       if (status === "RETARD") envoyerAlerteEmail(name, timeStr);
@@ -334,20 +343,8 @@
         document.getElementById('adminView').classList.remove('hidden');
         document.getElementById('agentView').classList.add('hidden');
         document.getElementById('authBtn').innerText = "Quitter Admin";
-        loadReports();
-        switchTab('tab-agents', document.querySelector('#adminView .nav-link.active')); // S'assurer que l'onglet agents est actif
-        
-        // Charger la liste des agents
-        const list = document.getElementById('listPersonnel');
-        list.innerHTML = getAgents().map(a => `
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span class="fw-bold">${a}</span>
-            <button class="btn btn-outline-danger btn-sm" onclick="supprimerAgent('${a}')">Supprimer</button>
-          </li>
-        `).join('');
-        
-        const sel = document.getElementById('filterAgent');
-        sel.innerHTML = '<option value="">Tous les agents</option>' + getAgents().map(a => `<option>${a}</option>`).join(''); // Recharger le filtre agent
+        refreshAgentLists();
+        loadAdminData();
       }
     } else {
       location.reload();
@@ -364,14 +361,11 @@
 
   function loadAdminData() {
     loadReports();
-    // Liste des agents
     const list = document.getElementById('listPersonnel');
     list.innerHTML = getAgents().map(a => `
       <li class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 bg-light rounded-3">
         <span class="fw-bold text-dark">${a}</span>
-        <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')">
-          <i class="bi bi-trash"></i>
-        </button>
+        <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')"><i class="bi bi-trash"></i></button>
       </li>
     `).join('');
     
@@ -428,7 +422,7 @@
       agents.push(n);
       saveAgents(agents);
       document.getElementById('newAgentName').value = ""; // Vider le champ
-      location.reload();
+      loadAdminData();
     }
   }
 
@@ -437,7 +431,7 @@
       let agents = getAgents().filter(a => a !== n);
       saveAgents(agents);
       // Supprimer aussi ses pointages ? (Optionnel)
-      location.reload();
+      loadAdminData();
     }
   }
 
