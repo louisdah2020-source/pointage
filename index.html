@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <style>
+    :root { 
+      --primary-color: #2e3192; 
+      --accent-color: #4cc9f0;
+      --success-color: #00b894;
+      --danger-color: #ff7675;
+      --bg-app: #f0f2f5;
+    }
+    body { 
+      background: linear-gradient(rgba(240, 242, 245, 0.85), rgba(240, 242, 245, 0.85)), url('conseillere.png');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      font-family: 'Poppins', sans-serif; 
+      min-height: 100vh;
+      padding-top: 40px; 
+    }
+    .app-container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .card {
+      border: none; 
+      border-radius: 25px; 
+      box-shadow: 0 15px 35px rgba(0,0,0,0.1); 
+      background: #ffffff;
+    }
+    .btn-pointage { 
+      height: 65px; 
+      font-size: 1.2rem; 
+      font-weight: 600; 
+      margin-bottom: 15px; 
+      border-radius: 18px; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: none;
+    }
+    .btn-pointage:hover { filter: brightness(1.1); transform: scale(1.02); }
+    .admin-header { background: var(--primary-color); color: white; border-radius: 25px 25px 0 0; padding: 15px; }
+    .hidden { display: none !important; }
+    .status-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 20px; }
+    .nav-pills .nav-link { color: #ffffff90; border-radius: 12px; }
+    .nav-pills .nav-link.active { background-color: var(--primary-color); }
+    .form-control, .form-select { border-radius: 15px; padding: 12px 20px; border: 2px solid #f1f2f6; background: #f8f9fa; }
+    .form-control:focus { border-color: var(--primary-color); background: #fff; box-shadow: none; }
+    
+    #liveClock {
+      font-size: 3rem;
+      font-weight: 600;
+      color: var(--primary-color);
+      margin-bottom: 5px;
+    }
+    .history-item {
+      background: #f8f9fa;
+      border-radius: 15px;
+      padding: 10px 15px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container app-container">
+  <div class="d-flex justify-content-between align-items-center mb-5">
+    <div class="text-center w-100">
+        <div class="bg-white d-inline-block p-3 rounded-circle shadow-sm mb-3">
+            <i class="bi bi-clock-fill text-primary h2 m-0"></i>
+        </div>
+        <h2 class="fw-bold text-dark">MON POINTAGE</h2>
+    </div>
+  </div>
+
+  <div class="text-center mb-4">
+    <div id="liveClock">00:00:00</div>
+    <div id="liveDate" class="text-muted small fw-bold text-uppercase">Lundi 1 Janvier</div>
+    <button id="authBtn" class="btn btn-link text-decoration-none text-muted mt-2" onclick="toggleView()">
+      <i class="bi bi-shield-lock me-1"></i>Admin
+    </button>
+  </div>
+
+  <!-- VUE AGENT -->
+  <div id="agentView" class="animate__animated animate__fadeIn">
+    <div class="card p-4 mb-4">
+      <div class="mb-4">
+        <label for="agentName" class="form-label fw-bold small text-muted text-uppercase ms-2">Votre Nom</label>
+        <select id="agentName" class="form-select form-select-lg" onchange="loadAgentTodayStats()">
+          <option value="" disabled selected>Choisir un profil...</option>
+        </select>
+      </div>
+
+      <div id="btnContainer" class="d-grid">
+        <div id="weekendMsg" class="alert alert-soft-info text-center hidden rounded-4 border-0">
+          <i class="bi bi-calendar-x me-2"></i>Pointage fermé aujourd'hui.
+        </div>
+        <button id="btn-ARRIVEE" class="btn btn-success btn-pointage hidden" onclick="effectuerPointage('ARRIVEE')">
+          <i class="bi bi-play-circle-fill"></i>Arrivée
+        </button>
+        <button id="btn-PAUSE" class="btn btn-warning btn-pointage hidden" onclick="effectuerPointage('PAUSE')">
+          <i class="bi bi-pause-circle-fill"></i>Début Pause
+        </button>
+        <button id="btn-RETOUR" class="btn btn-info text-white btn-pointage hidden" onclick="effectuerPointage('RETOUR')">
+          <i class="bi bi-play-circle"></i>Retour Pause
+        </button>
+        <button id="btn-DEPART" class="btn btn-danger btn-pointage hidden" onclick="effectuerPointage('DEPART')">
+          <i class="bi bi-stop-circle-fill"></i>Départ
+        </button>
+      </div>
+      <div id="feedback" class="mt-3 alert rounded-4 shadow-sm hidden text-center small fw-bold"></div>
+    </div>
+
+    <div id="agentTodaySection" class="card p-4 hidden">
+        <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Aujourd'hui</h6>
+        <div id="agentHistory"></div>
+    </div>
+  </div>
+
+  <!-- VUE ADMIN -->
+  <div id="adminView" class="hidden animate__animated animate__fadeIn">
+    <div class="card">
+      <div class="admin-header">
+        <nav class="nav nav-pills nav-justified">
+          <button class="nav-link active" onclick="switchTab('tab-agents', this)"><i class="bi bi-people me-2"></i>Gestion des Agents</button>
+          <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-file-earmark-bar-graph me-2"></i>Rapports & Statistiques</button>
+        </nav>
+      </div>
+      <div class="card-body p-4">
+        
+        <!-- Onglet Agents -->
+        <div id="tab-agents">
+          <h5>Ajouter un nouvel agent</h5>
+          <div class="input-group mb-4">
+            <input type="text" id="newAgentName" class="form-control" placeholder="NOM DE L'AGENT">
+            <button class="btn btn-primary px-4" onclick="ajouterAgent()"><i class="bi bi-plus-lg me-2"></i>Ajouter</button>
+          </div>
+          <hr>
+          <h5>Liste du personnel</h5>
+          <ul id="listPersonnel" class="list-group shadow-sm"></ul>
+        </div>
+
+        <!-- Onglet Rapports -->
+        <div id="tab-reports" class="hidden">
+          <div class="row g-3 mb-4">
+            <div class="col-md-3">
+              <label class="form-label small fw-bold">Date de début</label>
+              <input type="date" id="filterDateStart" class="form-control" onchange="loadReports()">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold">Date de fin</label>
+              <input type="date" id="filterDateEnd" class="form-control" onchange="loadReports()">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold">Filtrer par Agent</label>
+              <select id="filterAgent" class="form-select" onchange="loadReports()"></select>
+            </div>
+            <div class="col-md-3 text-end d-flex align-items-end">
+              <button class="btn btn-success w-100 py-2 rounded-3" onclick="exportToCSV()"><i class="bi bi-file-earmark-excel me-2"></i>Exporter CSV</button>
+            </div>
+          </div>
+
+          <div id="statsRow" class="row mb-4"></div>
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle" id="reportTable">
+              <thead class="table-light">
+                <tr><th>Date</th><th>Agent</th><th>Arrivée</th><th>Pause</th><th>Retour</th><th>Départ</th><th>Total</th><th>Statut</th></tr>
+              </thead>
+              <tbody id="reportData"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // --- CONFIGURATION & DONNEES ---
+  let userIsAdmin = false;
+  const ADMIN_PWD = "ADMIN123";
+
+  // Initialisation du localStorage
+  if (!localStorage.getItem('agents')) localStorage.setItem('agents', JSON.stringify(['JEAN DUPONT', 'MARIE CLAIRE']));
+  if (!localStorage.getItem('pointages')) localStorage.setItem('pointages', JSON.stringify([]));
+
+  function getAgents() { return JSON.parse(localStorage.getItem('agents')); }
+  function getPointages() { return JSON.parse(localStorage.getItem('pointages')); }
+  function saveAgents(data) { localStorage.setItem('agents', JSON.stringify(data)); }
+  function savePointages(data) { localStorage.setItem('pointages', JSON.stringify(data)); }
+  
+
+  // Logique d'affichage dynamique selon l'heure
+  function checkTimeConstraints() {
+    const now = new Date();
+    const day = now.getDay();
+    const h = now.getHours() + (now.getMinutes() / 60);
+    const isWeekend = (day === 0 || day === 6);
+
+    document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
+    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', isWeekend || !(h >= 8 && h <= 10));
+    document.getElementById('btn-PAUSE').classList.toggle('hidden', isWeekend || !(h >= 12 && h <= 13));
+    document.getElementById('btn-RETOUR').classList.toggle('hidden', isWeekend || !(h >= 13.5 && h <= 14));
+    document.getElementById('btn-DEPART').classList.toggle('hidden', isWeekend || !(h > 14));
+
+    // Remplir la liste déroulante des agents
+    const agentSelect = document.getElementById('agentName');
+    const currentSelectedAgent = agentSelect.value; // Garder l'agent sélectionné si possible
+    agentSelect.innerHTML = '<option value="" disabled>Sélectionner un agent</option>';
+    getAgents().forEach(agent => {
+      const option = document.createElement('option');
+      option.value = agent;
+      option.textContent = agent;
+      agentSelect.appendChild(option);
+    });
+    if (currentSelectedAgent && getAgents().includes(currentSelectedAgent)) agentSelect.value = currentSelectedAgent;
+  }
+
+  function effectuerPointage(type) {
+    const name = document.getElementById('agentName').value;
+    if (!getAgents().includes(name)) return alert("Cet agent n'existe pas dans la base.");
+
+    const now = new Date();
+    const dateKey = now.toLocaleDateString('fr-FR');
+    const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    
+    let logs = getPointages();
+    let entry = logs.find(l => l.date === dateKey && l.name === name);
+
+    if (!entry) {
+      if (type !== 'ARRIVEE') return alert("Vous devez d'abord pointer votre arrivée.");
+      const status = (now.getHours() >= 9) ? "RETARD" : "PRESENT";
+      entry = { date: dateKey, isoDate: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
+      logs.push(entry);
+      if (status === "RETARD") envoyerAlerteEmail(name, timeStr);
+    } else {
+      if (type === 'ARRIVEE') return alert("Arrivée déjà pointée.");
+      entry[type.toLowerCase()] = timeStr;
+      if (type === 'DEPART') entry.total = calculerHeures(entry);
+    }
+
+    savePointages(logs);
+    showFeedback(`Pointage ${type} enregistré à ${timeStr}`);
+    loadAgentTodayStats();
+  }
+
+  function loadAgentTodayStats() {
+    const name = document.getElementById('agentName').value;
+    if(!name) return;
+    
+    const dateKey = new Date().toLocaleDateString('fr-FR');
+    const entry = getPointages().find(l => l.date === dateKey && l.name === name);
+    const container = document.getElementById('agentHistory');
+    document.getElementById('agentTodaySection').classList.remove('hidden');
+    
+    if(!entry) {
+        container.innerHTML = '<div class="text-muted small">Aucun pointage pour le moment.</div>';
+        return;
+    }
+    container.innerHTML = `
+        <div class="history-item d-flex justify-content-between"><span>Arrivée</span> <strong>${entry.arrivee || '--:--'}</strong></div>
+        <div class="history-item d-flex justify-content-between"><span>Pause</span> <strong>${entry.pause || '--:--'}</strong></div>
+        <div class="history-item d-flex justify-content-between"><span>Retour</span> <strong>${entry.retour || '--:--'}</strong></div>
+        <div class="history-item d-flex justify-content-between"><span>Départ</span> <strong>${entry.depart || '--:--'}</strong></div>
+    `;
+    updateClock(); // Pour rafraîchir les boutons
+  }
+
+  function showFeedback(msg, isError = false) {
+    const f = document.getElementById('feedback');
+    f.className = `mt-3 alert rounded-4 shadow-sm ${isError ? 'alert-danger' : 'alert-success'}`;
+    f.innerText = msg;
+    f.classList.remove('hidden');
+    setTimeout(() => f.classList.add('hidden'), 5000);
+  }
+
+  // Configuration EmailJS
+  (function() {
+      emailjs.init("GV9L4JShbtuvahwC1"); // Vous devrez créer un compte gratuit sur emailjs.com
+  })();
+
+  function envoyerAlerteEmail(name, time) {
+    const recipients = "informaticien@mediayab.com, rh@mediayab.com, b.nguessan@mediayab.com";
+    
+    const templateParams = {
+      to_email: recipients,
+      agent_name: name,
+      check_in_time: time,
+      message: `L'agent ${name} a pointé son arrivée en retard à ${time}.`
+    };
+
+    emailjs.send('service_default', 'template_delay', templateParams)
+      .then(function(response) {
+         console.log('EMAIL ENVOYÉ AVEC SUCCÈS!', response.status, response.text);
+      }, function(error) {
+         console.error('ÉCHEC DE L\'ENVOI...', error);
+         console.warn("Alerte retard pour : " + recipients);
+         showFeedback("Erreur lors de l'envoi de l'alerte email.", true);
+      });
+  }
+
+  function calculerHeures(e) {
+    const parse = (t) => {
+      if (!t) return null;
+      const [h, m] = t.split(':').map(Number);
+      return h + (m / 60);
+    };
+    const arr = parse(e.arrivee);
+    const pStart = parse(e.pause);
+    const pEnd = parse(e.retour);
+    const dep = parse(e.depart);
+    
+    let total = dep - arr;
+    if (pStart && pEnd) total -= (pEnd - pStart);
+    return total > 0 ? total.toFixed(2) : 0;
+  }
+
+  function toggleView() {
+    if (!userIsAdmin) {
+      const p = prompt("Mot de passe administrateur :");
+      if (p === ADMIN_PWD) {
+        userIsAdmin = true;
+        document.getElementById('adminView').classList.remove('hidden');
+        document.getElementById('agentView').classList.add('hidden');
+        document.getElementById('authBtn').innerText = "Quitter Admin";
+        loadReports();
+        switchTab('tab-agents', document.querySelector('#adminView .nav-link.active')); // S'assurer que l'onglet agents est actif
+        
+        // Charger la liste des agents
+        const list = document.getElementById('listPersonnel');
+        list.innerHTML = getAgents().map(a => `
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="fw-bold">${a}</span>
+            <button class="btn btn-outline-danger btn-sm" onclick="supprimerAgent('${a}')">Supprimer</button>
+          </li>
+        `).join('');
+        
+        const sel = document.getElementById('filterAgent');
+        sel.innerHTML = '<option value="">Tous les agents</option>' + getAgents().map(a => `<option>${a}</option>`).join(''); // Recharger le filtre agent
+      }
+    } else {
+      location.reload();
+    }
+  }
+
+  function switchTab(id, el) {
+    document.getElementById('tab-agents').classList.add('hidden');
+    document.getElementById('tab-reports').classList.add('hidden');
+    document.getElementById(id).classList.remove('hidden');
+    document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function loadAdminData() {
+    loadReports();
+    // Liste des agents
+    const list = document.getElementById('listPersonnel');
+    list.innerHTML = getAgents().map(a => `
+      <li class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 bg-light rounded-3">
+        <span class="fw-bold text-dark">${a}</span>
+        <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')">
+          <i class="bi bi-trash"></i>
+        </button>
+      </li>
+    `).join('');
+    
+    const sel = document.getElementById('filterAgent');
+    sel.innerHTML = '<option value="">Tous les agents</option>' + getAgents().map(a => `<option>${a}</option>`).join('');
+  }
+
+  function loadReports() {
+    const logs = getPointages();
+    const tbody = document.getElementById('reportData');
+    let html = '', totalH = 0, countRetards = 0;
+    
+    const filter = document.getElementById('filterAgent').value;
+    const start = document.getElementById('filterDateStart').value;
+    const end = document.getElementById('filterDateEnd').value;
+
+    logs.forEach(r => {
+      if (filter && r.name !== filter) return;
+      if (start && r.isoDate < start) return;
+      if (end && r.isoDate > end) return;
+      
+      html += `<tr>
+        <td>${r.date}</td><td class="fw-bold">${r.name}</td>
+        <td>${r.arrivee || '-'}</td><td>${r.pause || '-'}</td>
+        <td>${r.retour || '-'}</td><td>${r.depart || '-'}</td>
+        <td>${r.total}h</td>
+        <td><span class="status-badge ${r.status === 'RETARD' ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
+      </tr>`;
+      
+      totalH += parseFloat(r.total || 0);
+      if (r.status === 'RETARD') countRetards++;
+    });
+
+    tbody.innerHTML = html;
+    document.getElementById('statsRow').innerHTML = `
+      <div class="col-md-6 mb-3">
+        <div class="stats-card shadow-sm">
+          <i class="bi bi-hourglass-split"></i><h6>Heures Cumulées</h6><h2 class="text-primary fw-bold">${totalH.toFixed(2)}h</h2>
+        </div>
+      </div>
+      <div class="col-md-6 mb-3">
+        <div class="stats-card shadow-sm" style="border-bottom-color: #e74c3c">
+          <i class="bi bi-exclamation-triangle text-danger"></i><h6>Total Retards</h6><h2 class="text-danger fw-bold">${countRetards}</h2>
+        </div>
+      </div>
+    `;
+  }
+
+  function ajouterAgent() {
+    const n = document.getElementById('newAgentName').value.trim().toUpperCase();
+    if (n) {
+      let agents = getAgents();
+      if (agents.includes(n)) return alert("Existe déjà");
+      agents.push(n);
+      saveAgents(agents);
+      document.getElementById('newAgentName').value = ""; // Vider le champ
+      location.reload();
+    }
+  }
+
+  function supprimerAgent(n) {
+    if (confirm(`Supprimer l'agent ${n} ?`)) {
+      let agents = getAgents().filter(a => a !== n);
+      saveAgents(agents);
+      // Supprimer aussi ses pointages ? (Optionnel)
+      location.reload();
+    }
+  }
+
+  function exportToCSV() {
+    let csv = [];
+    document.querySelectorAll("table tr").forEach(row => {
+      csv.push(Array.from(row.cells).map(c => `"${c.innerText}"`).join(","));
+    });
+    const blob = new Blob([csv.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Rapport_Pointage.csv";
+    link.click();
+  }
+
+  setInterval(updateClock, 1000);
+  refreshAgentLists();
+  updateClock();
+</script>
+</body>
+</html>
