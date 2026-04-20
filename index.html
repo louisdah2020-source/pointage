@@ -503,7 +503,7 @@
       message: `Alerte Pointage : ${name} a pointé avec le statut [${statusType}] à ${time}.` + (motif ? ` Motif: ${motif}` : '')
     };
 
-    emailjs.send('service_default', 'template_delay', templateParams)
+    emailjs.send('z7DWqSMHlA0UB7BwGtnQg', 'template_delay', templateParams)
       .then(function(response) {
          console.log('EMAIL ENVOYÉ AVEC SUCCÈS!', response.status, response.text);
       }, function(error) {
