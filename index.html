@@ -364,10 +364,6 @@
     
     // Vérifier si les RH ont déjà fait une entrée manuelle pour cet agent aujourd'hui
     const logs = await getPointages();
-    const existingManualEntry = logs.find(l => l.date === dateKey && l.name === name && (l.status === "ABSENCE (TARDIF)" || l.status === "ABSENCE CONSTATED" || l.status === "RETARD"));
-    if (existingManualEntry) {
-      return alert(`Pointage impossible : Une entrée manuelle (${existingManualEntry.status}) existe déjà pour vous aujourd'hui. Veuillez contacter les RH.`);
-    }
     const h = now.getHours() + (now.getMinutes() / 60);
     
     let entry = logs.find(l => l.date === dateKey && l.name === name);
@@ -389,7 +385,21 @@
       
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
-      if (type === 'ARRIVEE') return alert("Arrivée déjà pointée.");
+      if (type === 'ARRIVEE') {
+        // Permettre la régularisation si l'agent était marqué absent par le système
+        if (entry.arrivee === 'NON POINTE' || entry.status === 'ABSENCE CONSTATED') {
+          let newStatus = "PRESENT";
+          if (h > 11.5) newStatus = "ABSENCE (TARDIF)";
+          else if (h > 10.25) newStatus = "RETARD";
+          
+          const { error } = await _supabase.from('pointages').update({ arrivee: timeStr, status: newStatus }).eq('id', entry.id);
+          if (error) return alert("Erreur lors de la régularisation.");
+          showFeedback(`Arrivée régularisée à ${timeStr}`);
+          if (newStatus !== "PRESENT") envoyerAlerteEmail(name, timeStr, newStatus);
+          return loadAgentTodayStats();
+        }
+        return alert("Arrivée déjà pointée.");
+      }
       const updateData = { [type.toLowerCase()]: timeStr };
       if (type === 'DEPART') {
         entry[type.toLowerCase()] = timeStr;
