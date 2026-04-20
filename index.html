@@ -379,8 +379,6 @@
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
       if (type === 'ARRIVEE') return alert("Arrivée déjà pointée.");
-      entry[type.toLowerCase()] = timeStr;
-      if (type === 'DEPART') entry.total = calculerHeures(entry);
       const updateData = { [type.toLowerCase()]: timeStr };
       if (type === 'DEPART') {
         entry[type.toLowerCase()] = timeStr;
