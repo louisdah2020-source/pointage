@@ -371,7 +371,7 @@
       if (h > 11.5) status = "ABSENCE (TARDIF)";
       else if (h > 10.25) status = "RETARD";
       
-      entry = { date: dateKey, isoDate: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
+      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       logs.push(entry); // Ajout de la nouvelle entrée
       const { error } = await _supabase.from('pointages').insert([entry]);
       if (error) return alert("Erreur serveur lors du pointage.");
