@@ -632,6 +632,41 @@
     }
   }
 
+  async function enregistrerPointageManuel() {
+    const name = document.getElementById('manualAgentSelect').value;
+    const dateVal = document.getElementById('manualDate').value; // Format YYYY-MM-DD
+    const status = document.getElementById('manualStatus').value;
+    const motif = document.getElementById('manualMotif').value;
+
+    if (!name || !dateVal) return alert("Veuillez sélectionner un agent et une date.");
+
+    // Conversion de la date YYYY-MM-DD en DD/MM/YYYY pour l'affichage
+    const [y, m, d] = dateVal.split('-');
+    const dateKey = `${d}/${m}/${y}`;
+
+    const entry = {
+      date: dateKey,
+      iso_date: dateVal,
+      name: name,
+      status: status,
+      motif: motif,
+      arrivee: 'MANUEL',
+      total: 0
+    };
+
+    const { error } = await _supabase.from('pointages').insert([entry]);
+
+    if (error) {
+      console.error("Erreur insertion manuelle:", error);
+      alert("Erreur lors de l'enregistrement : " + error.message);
+    } else {
+      showFeedback("Pointage manuel enregistré avec succès.");
+      document.getElementById('manualMotif').value = "";
+      loadReports(); // Actualise le tableau des rapports
+      envoyerAlerteEmail(name, "MANUEL", status, motif);
+    }
+  }
+
   async function supprimerAgent(n) {
     if (confirm(`Supprimer l'agent ${n} ?`)) {
       await _supabase.from('agents').delete().eq('name', n);
