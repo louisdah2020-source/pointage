@@ -228,6 +228,7 @@
   // --- CONFIGURATION & DONNEES ---
   let userIsAdmin = false;
   const ADMIN_PWD = "ADMIN123";
+  let currentPointage = null; // État global pour synchroniser l'UI avec la base de données
 
   // --- CONFIGURATION SUPABASE ---
   const S_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
@@ -279,17 +280,24 @@
     const day = now.getDay();
     const h = now.getHours() + (now.getMinutes() / 60);
     const isWeekend = (day === 0 || day === 6);
-
-    const deviceLogs = getDeviceLogs();
-    const todayActions = deviceLogs[dateKey] || [];
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
     
     const hasAgent = document.getElementById('agentName').value !== "";
-    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || todayActions.includes('ARRIVEE') || !(h >= 10 && h < 14));
-    document.getElementById('btn-PAUSE').classList.toggle('hidden', !hasAgent || isWeekend || todayActions.includes('PAUSE') || !(h >= 14 && h <= 14.5));
-    document.getElementById('btn-RETOUR').classList.toggle('hidden', !hasAgent || isWeekend || todayActions.includes('RETOUR') || !(h >= 15 && h <= 15.5));
-    document.getElementById('btn-DEPART').classList.toggle('hidden', !hasAgent || isWeekend || todayActions.includes('DEPART'));
+    const p = currentPointage;
+
+    // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
+    const arriveeFaite = p && p.arrivee && p.arrivee !== 'NON POINTE';
+    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || arriveeFaite || h < 10);
+
+    // Pause : Visible si l'arrivée est enregistrée (même en retard) et pas encore de pause
+    document.getElementById('btn-PAUSE').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.arrivee || p.pause || !(h >= 14 && h <= 14.5));
+
+    // Retour : Visible si la pause est enregistrée et pas encore de retour
+    document.getElementById('btn-RETOUR').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.pause || p.retour || !(h >= 15 && h <= 15.5));
+
+    // Départ : Toujours visible si l'arrivée est faite
+    document.getElementById('btn-DEPART').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.arrivee || p.depart);
   }
 
   // Fonction centralisée pour rafraîchir toutes les listes d'agents
@@ -407,6 +415,7 @@
     const dateKey = new Date().toLocaleDateString('fr-FR');
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
+    currentPointage = entry; // Mise à jour de l'état global pour updateClock
     const container = document.getElementById('agentHistory');
     document.getElementById('agentTodaySection').classList.remove('hidden');
     
