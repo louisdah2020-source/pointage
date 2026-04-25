@@ -166,13 +166,13 @@
             <label for="manualDate" class="form-label small fw-bold">Date</label>
             <input type="date" id="manualDate" class="form-control">
           </div>
-          <div class="mb-3">
+          <div class="mb-3" id="manualTimeGroup">
             <label for="manualTime" class="form-label small fw-bold">Heure de Pointage</label>
             <input type="time" id="manualTime" class="form-control">
           </div>
           <div class="mb-3">
             <label for="manualStatus" class="form-label small fw-bold">Statut</label>
-            <select id="manualStatus" class="form-select">
+            <select id="manualStatus" class="form-select" onchange="toggleManualTimeVisibility()">
               <option value="RETARD">Retard</option>
               <option value="ABSENCE (TARDIF)">Absence (Tardif)</option>
               <option value="ABSENCE CONSTATED">Absence Constatée</option>
@@ -580,7 +580,18 @@
         document.getElementById('manualDate').valueAsDate = new Date();
         const now = new Date();
         document.getElementById('manualTime').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        toggleManualTimeVisibility();
       });
+    }
+  }
+
+  function toggleManualTimeVisibility() {
+    const status = document.getElementById('manualStatus').value;
+    const group = document.getElementById('manualTimeGroup');
+    if (status.includes('ABSENCE')) {
+      group.classList.add('hidden');
+    } else {
+      group.classList.remove('hidden');
     }
   }
 
@@ -673,8 +684,9 @@
     const timeVal = document.getElementById('manualTime').value;
     const status = document.getElementById('manualStatus').value;
     const motif = document.getElementById('manualMotif').value;
+    const isAbsence = status.includes('ABSENCE');
 
-    if (!name || !dateVal || !timeVal) return alert("Veuillez sélectionner un agent, une date et une heure.");
+    if (!name || !dateVal || (!timeVal && !isAbsence)) return alert("Veuillez sélectionner un agent, une date et une heure.");
 
     // Conversion de la date YYYY-MM-DD en DD/MM/YYYY pour l'affichage
     const [y, m, d] = dateVal.split('-');
@@ -686,7 +698,7 @@
       name: name,
       status: status,
       motif: motif,
-      arrivee: timeVal,
+      arrivee: isAbsence ? 'NON POINTE' : timeVal,
       total: 0
     };
 
