@@ -18,16 +18,16 @@ $mail = new PHPMailer(true);
 try {
     // --- CONFIGURATION SERVEUR SMTP (Exemple avec Gmail) ---
     $mail->isSMTP();
-    $mail->Host       = 'smtp.gmail.com';               // Serveur SMTP (ex: mail.votre-domaine.com)
+    $mail->Host       = 'mail.mediayab.com';            // Serveur SMTP LWS (ou mailxx.lwspanel.com)
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'votre-email@gmail.com';        // Votre email
-    $mail->Password   = 'votre-mot-de-passe-application'; // Votre mot de passe (ou mot de passe d'application)
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port       = 587;
-    $mail->setFrom('votre-email@gmail.com', 'Système Pointage');
+    $mail->Username   = 'b.nguessan@mediayab.com';        // Votre email
+    $mail->Password   = 'VOTRE_MOT_DE_PASSE_LWS';         // Le mot de passe de votre boîte mail LWS
+    $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;      // SSL est souvent plus stable avec LWS
+    $mail->Port       = 465;                              // Port standard pour SSL chez LWS
+    $mail->setFrom('b.nguessan@mediayab.com', 'Système Pointage');
 
     // Destinataires
-    foreach($recipients as $email) {    $mail->addAddress(trim($email));
+    foreach($data['recipients'] as $email) {    $mail->addAddress(trim($email));
     }
 
     // --- EMBARQUER LE LOGO ---
@@ -45,7 +45,19 @@ $mail->Subject = "Alerte Pointage : " . htmlspecialchars($data['statusType']) . 
             <p>Une nouvelle alerte de pointage a été enregistrée :</p>
             <table style="width: 100%; border-collapse: collapse;">
                 <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Agent :</td><td style="padding: 8px; border: 1px solid #ddd;">' . htmlspecialchars($data['name']) . '</td></tr>
-                <tr><td style="ing:: 1px solid #ddd; font-weight: bold;">Statut :</td><td style="padding: 8px; border: 1px solid #ddd; color: #d9534f; font-weight: bold;">' . htmlspecialchars($data['statusType']) . '</td></tr>';
-
+                <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Heure :</td><td style="padding: 8px; border: 1px solid #ddd;">' . htmlspecialchars($data['time']) . '</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Statut :</td><td style="padding: 8px; border: 1px solid #ddd; color: #d9534f; font-weight: bold;">' . htmlspecialchars($data['statusType']) . '</td></tr>';
+    
     if (!empty($data['motif'])) {
-        $body .= '<t
+        $body .= '<tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Motif :</td><td style="padding: 8px; border: 1px solid #ddd;">' . htmlspecialchars($data['motif']) . '</td></tr>';
+    }
+    
+    $body .= '</table></div></div>';
+    $mail->Body = $body;
+    $mail->isHTML(true);
+
+    $mail->send();
+    echo json_encode(['success' => true, 'message' => 'Email envoyé avec succès']);
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => "Erreur : {$mail->ErrorInfo}"]);
+}

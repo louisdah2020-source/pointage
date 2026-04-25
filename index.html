@@ -167,6 +167,10 @@
             <input type="date" id="manualDate" class="form-control">
           </div>
           <div class="mb-3">
+            <label for="manualTime" class="form-label small fw-bold">Heure de Pointage</label>
+            <input type="time" id="manualTime" class="form-control">
+          </div>
+          <div class="mb-3">
             <label for="manualStatus" class="form-label small fw-bold">Statut</label>
             <select id="manualStatus" class="form-select">
               <option value="RETARD">Retard</option>
@@ -508,7 +512,7 @@
       recipients: ["informaticien@mediayab.com", "rh@mediayab.com", "b.nguessan@mediayab.com"]
     };
 
-    fetch('../afichar/send_mail.php', {
+    fetch('send_mail.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -574,6 +578,8 @@
       getAgents().then(agents => {
         document.getElementById('manualAgentSelect').innerHTML = agents.map(a => `<option>${a}</option>`).join('');
         document.getElementById('manualDate').valueAsDate = new Date();
+        const now = new Date();
+        document.getElementById('manualTime').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
       });
     }
   }
@@ -664,10 +670,11 @@
   async function enregistrerPointageManuel() {
     const name = document.getElementById('manualAgentSelect').value;
     const dateVal = document.getElementById('manualDate').value; // Format YYYY-MM-DD
+    const timeVal = document.getElementById('manualTime').value;
     const status = document.getElementById('manualStatus').value;
     const motif = document.getElementById('manualMotif').value;
 
-    if (!name || !dateVal) return alert("Veuillez sélectionner un agent et une date.");
+    if (!name || !dateVal || !timeVal) return alert("Veuillez sélectionner un agent, une date et une heure.");
 
     // Conversion de la date YYYY-MM-DD en DD/MM/YYYY pour l'affichage
     const [y, m, d] = dateVal.split('-');
@@ -679,7 +686,7 @@
       name: name,
       status: status,
       motif: motif,
-      arrivee: 'MANUEL',
+      arrivee: timeVal,
       total: 0
     };
 
@@ -692,7 +699,7 @@
       showFeedback("Pointage manuel enregistré avec succès.");
       document.getElementById('manualMotif').value = "";
       loadReports(); // Actualise le tableau des rapports
-      envoyerAlerteEmail(name, "MANUEL", status, motif);
+      envoyerAlerteEmail(name, timeVal, status, motif);
     }
   }
 
