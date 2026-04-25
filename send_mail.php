@@ -21,7 +21,7 @@ try {
     $mail->Host       = 'mail.mediayab.com';            // Serveur SMTP LWS (ou mailxx.lwspanel.com)
     $mail->SMTPAuth   = true;
     $mail->Username   = 'b.nguessan@mediayab.com';        // Votre email
-    $mail->Password   = 'VOTRE_MOT_DE_PASSE_LWS';         // Le mot de passe de votre boîte mail LWS
+    $mail->Password   = 'DG-y@b2025';         // Le mot de passe de votre boîte mail LWS
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;      // SSL est souvent plus stable avec LWS
     $mail->Port       = 465;                              // Port standard pour SSL chez LWS
     $mail->setFrom('b.nguessan@mediayab.com', 'Système Pointage');
