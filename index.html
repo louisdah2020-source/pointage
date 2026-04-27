@@ -239,6 +239,7 @@
   let userIsAdmin = false;
   const ADMIN_PWD = "ADMIN123";
   let currentPointage = null; // État global pour synchroniser l'UI avec la base de données
+  let lastNotificationMinute = -1;
 
   // --- CONFIGURATION SUPABASE ---
   const S_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
@@ -280,10 +281,32 @@
   }
   function saveDeviceLogs(data) { localStorage.setItem('device_logs', JSON.stringify(data)); }
 
+  // Demander la permission pour les notifications au démarrage
+  if ("Notification" in window) {
+    if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+  }
+
+  function envoyerNotificationAgent(message) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Rappel Pointage", {
+        body: message,
+        icon: "logo.jpg"
+      });
+      // Optionnel : Jouer un petit son
+      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+      audio.play();
+    }
+  }
+
   // Horloge et Contraintes d'affichage
   function updateClock() {
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
+
     document.getElementById('liveClock').innerText = now.toLocaleTimeString('fr-FR');
     document.getElementById('liveDate').innerText = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
     
@@ -295,6 +318,23 @@
     
     const hasAgent = document.getElementById('agentName').value !== "";
     const p = currentPointage;
+
+    // --- LOGIQUE DES NOTIFICATIONS AUTOMATIQUES ---
+    if (hasAgent && !isWeekend && currentMinutes !== lastNotificationMinute) {
+      if (currentHours === 10 && currentMinutes === 0 && (!p || !p.arrivee)) {
+        envoyerNotificationAgent("Il est 10h00 : Il est temps de pointer votre arrivée !");
+        lastNotificationMinute = currentMinutes;
+      } else if (currentHours === 14 && currentMinutes === 0 && p && p.arrivee && !p.pause) {
+        envoyerNotificationAgent("Il est 14h00 : C'est l'heure de la pause !");
+        lastNotificationMinute = currentMinutes;
+      } else if (currentHours === 15 && currentMinutes === 30 && p && p.pause && !p.retour) {
+        envoyerNotificationAgent("Il est 15h30 : C'est l'heure de reprendre le travail !");
+        lastNotificationMinute = currentMinutes;
+      } else if (currentHours === 19 && currentMinutes === 30 && p && p.arrivee && !p.depart) {
+        envoyerNotificationAgent("Il est 19h30 : La journée est finie, n'oubliez pas de pointer votre départ !");
+        lastNotificationMinute = currentMinutes;
+      }
+    }
 
     // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
     const arriveeFaite = p && p.arrivee && p.arrivee !== 'NON POINTE';
