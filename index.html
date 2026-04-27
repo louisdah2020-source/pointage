@@ -298,7 +298,7 @@
 
     // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
     const arriveeFaite = p && p.arrivee && p.arrivee !== 'NON POINTE';
-    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || arriveeFaite || h < 10);
+    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || arriveeFaite || h < 8);
 
     // Pause : Visible si l'arrivée est enregistrée (même en retard) et pas encore de pause
     document.getElementById('btn-PAUSE').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.arrivee || p.pause || !(h >= 14 && h <= 14.5));
@@ -370,11 +370,22 @@
 
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
-    const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const h = now.getHours() + (now.getMinutes() / 60);
+    let timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    // Logique d'arrondi et de règles horaires
+    if (type === 'ARRIVEE') {
+      if (h < 10) timeStr = "10:00";
+    } else if (type === 'PAUSE') {
+      if (h >= 14) timeStr = "14:00";
+    } else if (type === 'RETOUR') {
+      if (h < 15.5) timeStr = "15:30";
+    } else if (type === 'DEPART') {
+      if (h >= 19.5) timeStr = "19:30";
+    }
     
     // Vérifier si les RH ont déjà fait une entrée manuelle pour cet agent aujourd'hui
     const logs = await getPointages();
-    const h = now.getHours() + (now.getMinutes() / 60);
     
     let entry = logs.find(l => l.date === dateKey && l.name === name);
 
@@ -383,7 +394,7 @@
       
       let status = "PRESENT";
       if (h > 11.5) status = "ABSENCE (TARDIF)";
-      else if (h > 10.25) status = "RETARD";
+      else if (h >= 10.0833) status = "RETARD"; // 10.0833 correspond à 10h05
       
       entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       logs.push(entry); // Ajout de la nouvelle entrée
