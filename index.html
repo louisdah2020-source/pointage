@@ -214,8 +214,9 @@
               <label class="form-label small fw-bold">Filtrer par Agent</label>
               <select id="filterAgent" class="form-select" onchange="loadReports()"></select>
             </div>
-            <div class="col-md-3 text-end d-flex align-items-end">
-              <button class="btn btn-success w-100 py-2 rounded-3" onclick="exportToCSV()"><i class="bi bi-file-earmark-excel me-2"></i>Exporter CSV</button>
+            <div class="col-md-3 text-end d-flex align-items-end gap-2">
+              <button class="btn btn-success flex-grow-1 py-2 rounded-3" onclick="exportToCSV()" title="Exporter CSV"><i class="bi bi-file-earmark-excel"></i></button>
+              <button class="btn btn-primary flex-grow-1 py-2 rounded-3" onclick="envoyerRecapitulatifJournalier()" title="Envoyer le récapitulatif par email"><i class="bi bi-envelope-at me-2"></i>Récap</button>
             </div>
           </div>
 
@@ -393,6 +394,16 @@
         envoyerNotificationAgent("Il est 19h30 : La journée est finie, n'oubliez pas de pointer votre départ !");
         lastNotificationMinute = currentMinutes;
       }
+    }
+
+    // --- ENVOI AUTOMATIQUE DU RÉCAPITULATIF (ADMIN) ---
+    // Se déclenche à 19h45 si l'admin est connecté
+    const todayStr = now.toLocaleDateString('fr-FR');
+    const lastSent = localStorage.getItem('lastSummarySentDate');
+    
+    if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== todayStr) {
+      localStorage.setItem('lastSummarySentDate', todayStr);
+      envoyerRecapitulatifJournalier(true); // true pour mode silencieux
     }
 
     // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
@@ -832,6 +843,42 @@
       </div>
     `;
     updateAgentChart(filter, logs);
+  }
+
+  async function envoyerRecapitulatifJournalier(silent = false) {
+    const logs = await getPointages();
+    const today = new Date().toLocaleDateString('fr-FR');
+    const todayLogs = logs.filter(l => l.date === today);
+
+    if (todayLogs.length === 0) {
+      if (!silent) alert("Aucun pointage enregistré pour aujourd'hui.");
+      return;
+    }
+
+    const payload = {
+      isSummary: true,
+      date: today,
+      items: todayLogs.map(l => ({
+        name: l.name,
+        arrivee: l.arrivee || '-',
+        depart: l.depart || '-',
+        total: l.total || '0',
+        status: l.status
+      })),
+      recipients: ["informaticien@mediayab.com", "rh@mediayab.com", "b.nguessan@mediayab.com"]
+    };
+
+    try {
+      const res = await fetch('send_mail.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      if (!silent) alert(result.success ? "Récapitulatif envoyé avec succès !" : "Erreur : " + result.message);
+    } catch (e) {
+      if (!silent) alert("Erreur réseau lors de l'envoi du récapitulatif.");
+    }
   }
 
   async function ajouterAgent() {
