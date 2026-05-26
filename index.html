@@ -562,42 +562,60 @@
     const monthlyContainer = document.getElementById('agentMonthlyHistory');
     document.getElementById('agentTodaySection').classList.remove('hidden');
     
-    // Gestion du cumul mensuel (visible uniquement entre le 25 et le 5 du mois suivant)
+    // Gestion du cumul mensuel (toujours visible pour le mois en cours)
     const now = new Date();
-    const currentDay = now.getDate();
     monthlyContainer.innerHTML = '';
 
-    if (currentDay >= 25 || currentDay <= 5) {
-        let targetMonth, targetYear;
-        if (currentDay <= 5) {
-            // On affiche le cumul du mois précédent (ex: début Mai -> on regarde Avril)
-            const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            targetMonth = prevMonthDate.getMonth();
-            targetYear = prevMonthDate.getFullYear();
-        } else {
-            // On affiche le cumul du mois en cours (ex: fin Avril)
-            targetMonth = now.getMonth();
-            targetYear = now.getFullYear();
+    const targetMonth = now.getMonth(); // 0-11
+    const targetYear = now.getFullYear();
+
+    const monthlyEntries = pointages.filter(p => {
+        if (p.name !== name || !p.iso_date) return false;
+        // Extraction sûre de la date (YYYY-MM-DD) pour éviter les décalages horaires
+        const parts = p.iso_date.split('-');
+        const y = parseInt(parts[0]);
+        const m = parseInt(parts[1]);
+        return (m - 1) === targetMonth && y === targetYear;
+    });
+
+    const mStats = monthlyEntries.reduce((acc, p) => {
+        acc.work += parseFloat(p.total || 0);
+        if (p.status === 'RETARD') {
+            acc.retards++;
+            if (p.arrivee && p.arrivee !== 'NON POINTE') {
+                const [h, m] = p.arrivee.split(':').map(Number);
+                const diff = (h + (m / 60)) - 10; // Retard par rapport à 10h00
+                if (diff > 0) acc.retardHours += diff;
+            }
+        } else if (p.status && p.status.includes('ABSENCE')) {
+            acc.absences++;
         }
+        return acc;
+    }, { work: 0, retards: 0, retardHours: 0, absences: 0 });
 
-        const monthlyEntries = pointages.filter(p => {
-            if (p.name !== name || !p.iso_date) return false;
-            const pDate = new Date(p.iso_date);
-            return pDate.getMonth() === targetMonth && pDate.getFullYear() === targetYear;
-        });
-
-        const totalMonthHours = monthlyEntries.reduce((acc, curr) => acc + parseFloat(curr.total || 0), 0);
-        const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-        
-        monthlyContainer.innerHTML = `
-            <div class="alert alert-info mt-3 mb-0 py-2 rounded-4 shadow-sm border-0" style="background-color: #e3f2fd;">
-                <small class="fw-bold text-uppercase d-block mb-1 text-primary" style="font-size: 0.7rem;">
-                    <i class="bi bi-calculator me-1"></i>Cumul ${monthNames[targetMonth]}
-                </small>
-                <div class="h4 mb-0 fw-bold text-dark">${totalMonthHours.toFixed(2)}h</div>
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    
+    monthlyContainer.innerHTML = `
+        <div class="alert alert-info mt-3 mb-0 py-2 rounded-4 shadow-sm border-0" style="background-color: #e3f2fd;">
+            <small class="fw-bold text-uppercase d-block mb-1 text-primary" style="font-size: 0.7rem;">
+                <i class="bi bi-bar-chart-fill me-1"></i>Statistiques ${monthNames[targetMonth]}
+            </small>
+            <div class="row g-0 text-center mt-2">
+                <div class="col-4 border-end">
+                    <div class="h6 mb-0 fw-bold text-dark">${mStats.work.toFixed(1)}h</div>
+                    <small class="text-muted" style="font-size: 0.6rem;">TRAVAIL</small>
+                </div>
+                <div class="col-4 border-end">
+                    <div class="h6 mb-0 fw-bold text-danger">${mStats.retards} <span style="font-size: 0.7em;">(${mStats.retardHours.toFixed(1)}h)</span></div>
+                    <small class="text-muted" style="font-size: 0.6rem;">RETARDS</small>
+                </div>
+                <div class="col-4">
+                    <div class="h6 mb-0 fw-bold text-danger">${mStats.absences}</div>
+                    <small class="text-muted" style="font-size: 0.6rem;">ABSENCES</small>
+                </div>
             </div>
-        `;
-    }
+        </div>
+    `;
 
     if(!entry) {
         container.innerHTML = '<div class="text-muted small">Aucun pointage pour le moment.</div>';
@@ -800,7 +818,7 @@
       monthlyMap[key] = (monthlyMap[key] || 0) + parseFloat(p.total || 0);
     });
 
-    let html = '', totalH = 0, countRetards = 0;
+    let html = '', totalH = 0, countRetards = 0, totalRetardH = 0, countAbsences = 0;
     
     const filter = document.getElementById('filterAgent').value;
     const start = document.getElementById('filterDateStart').value;
@@ -826,19 +844,32 @@
       </tr>`;
       
       totalH += parseFloat(r.total || 0);
-      if (r.status === 'RETARD' || r.status.includes('ABSENCE')) countRetards++;
+      if (r.status === 'RETARD') {
+        countRetards++;
+        if (r.arrivee && r.arrivee !== 'NON POINTE') {
+            const [h, m] = r.arrivee.split(':').map(Number);
+            const diff = (h + (m / 60)) - 10;
+            if (diff > 0) totalRetardH += diff;
+        }
+      }
+      if (r.status && r.status.includes('ABSENCE')) countAbsences++;
     });
 
     tbody.innerHTML = html;
     document.getElementById('statsRow').innerHTML = `
-      <div class="col-md-6 mb-3">
+      <div class="col-md-4 mb-3">
         <div class="stats-card shadow-sm">
           <i class="bi bi-hourglass-split"></i><h6>Heures Cumulées</h6><h2 class="text-primary fw-bold">${totalH.toFixed(2)}h</h2>
         </div>
       </div>
-      <div class="col-md-6 mb-3">
+      <div class="col-md-4 mb-3">
         <div class="stats-card shadow-sm" style="border-bottom-color: #e74c3c">
-          <i class="bi bi-exclamation-triangle text-danger"></i><h6>Total Retards</h6><h2 class="text-danger fw-bold">${countRetards}</h2>
+          <i class="bi bi-exclamation-triangle text-danger"></i><h6>Retards</h6><h2 class="text-danger fw-bold">${countRetards} <small style="font-size: 0.5em;">(${totalRetardH.toFixed(2)}h perdues)</small></h2>
+        </div>
+      </div>
+      <div class="col-md-4 mb-3">
+        <div class="stats-card shadow-sm" style="border-bottom-color: #d63031">
+          <i class="bi bi-x-circle text-danger"></i><h6>Absences</h6><h2 class="text-danger fw-bold">${countAbsences}</h2>
         </div>
       </div>
     `;
