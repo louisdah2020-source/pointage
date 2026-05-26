@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
@@ -130,6 +131,7 @@
     <div id="agentTodaySection" class="card p-4 hidden">
         <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Aujourd'hui</h6>
         <div id="agentHistory"></div>
+        <div id="agentMonthlyHistory"></div>
     </div>
   </div>
 
@@ -219,10 +221,14 @@
 
           <div id="statsRow" class="row mb-4"></div>
 
+          <div class="card mb-4 p-3 shadow-sm border-0 rounded-4 hidden" id="chartContainer">
+            <canvas id="agentMonthlyChart" style="max-height: 250px;"></canvas>
+          </div>
+
           <div class="table-responsive">
             <table class="table table-hover align-middle" id="reportTable">
               <thead class="table-light">
-                <tr><th>Date</th><th>Agent</th><th>Arrivée</th><th>Pause</th><th>Retour</th><th>Départ</th><th>Total</th><th>Statut</th><th>Motif</th></tr>
+                <tr><th>Date</th><th>Agent</th><th>Arrivée</th><th>Pause</th><th>Retour</th><th>Départ</th><th>Total</th><th>Cumul Mois</th><th>Statut</th><th>Motif</th></tr>
               </thead>
               <tbody id="reportData"></tbody>
             </table>
@@ -240,6 +246,59 @@
   const ADMIN_PWD = "ADMIN123";
   let currentPointage = null; // État global pour synchroniser l'UI avec la base de données
   let lastNotificationMinute = -1;
+
+  // --- GRAPHIQUE ADMIN ---
+  let agentChart = null;
+  function updateAgentChart(agentName, logs) {
+    const container = document.getElementById('chartContainer');
+    if (!agentName) {
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+
+    // Filtrer les données pour l'agent et grouper par mois
+    const agentLogs = logs.filter(l => l.name === agentName && l.iso_date);
+    const monthlyData = {};
+    
+    agentLogs.forEach(l => {
+      const d = new Date(l.iso_date);
+      const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      monthlyData[key] = (monthlyData[key] || 0) + parseFloat(l.total || 0);
+    });
+
+    const sortedMonths = Object.keys(monthlyData).sort();
+    const labels = sortedMonths.map(m => {
+      const [y, mm] = m.split('-');
+      return new Date(y, parseInt(mm) - 1).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+    });
+    const values = sortedMonths.map(m => monthlyData[m]);
+
+    const ctx = document.getElementById('agentMonthlyChart').getContext('2d');
+    if (agentChart) agentChart.destroy();
+
+    agentChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Heures effectuées',
+          data: values,
+          borderColor: '#2e3192',
+          backgroundColor: 'rgba(46, 49, 146, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
 
   // --- CONFIGURATION SUPABASE ---
   const S_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
@@ -487,9 +546,48 @@
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
     currentPointage = entry; // Mise à jour de l'état global pour updateClock
+    
     const container = document.getElementById('agentHistory');
+    const monthlyContainer = document.getElementById('agentMonthlyHistory');
     document.getElementById('agentTodaySection').classList.remove('hidden');
     
+    // Gestion du cumul mensuel (visible uniquement entre le 25 et le 5 du mois suivant)
+    const now = new Date();
+    const currentDay = now.getDate();
+    monthlyContainer.innerHTML = '';
+
+    if (currentDay >= 25 || currentDay <= 5) {
+        let targetMonth, targetYear;
+        if (currentDay <= 5) {
+            // On affiche le cumul du mois précédent (ex: début Mai -> on regarde Avril)
+            const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            targetMonth = prevMonthDate.getMonth();
+            targetYear = prevMonthDate.getFullYear();
+        } else {
+            // On affiche le cumul du mois en cours (ex: fin Avril)
+            targetMonth = now.getMonth();
+            targetYear = now.getFullYear();
+        }
+
+        const monthlyEntries = pointages.filter(p => {
+            if (p.name !== name || !p.iso_date) return false;
+            const pDate = new Date(p.iso_date);
+            return pDate.getMonth() === targetMonth && pDate.getFullYear() === targetYear;
+        });
+
+        const totalMonthHours = monthlyEntries.reduce((acc, curr) => acc + parseFloat(curr.total || 0), 0);
+        const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+        
+        monthlyContainer.innerHTML = `
+            <div class="alert alert-info mt-3 mb-0 py-2 rounded-4 shadow-sm border-0" style="background-color: #e3f2fd;">
+                <small class="fw-bold text-uppercase d-block mb-1 text-primary" style="font-size: 0.7rem;">
+                    <i class="bi bi-calculator me-1"></i>Cumul ${monthNames[targetMonth]}
+                </small>
+                <div class="h4 mb-0 fw-bold text-dark">${totalMonthHours.toFixed(2)}h</div>
+            </div>
+        `;
+    }
+
     if(!entry) {
         container.innerHTML = '<div class="text-muted small">Aucun pointage pour le moment.</div>';
         return;
@@ -679,6 +777,16 @@
   async function loadReports() {
     const logs = await getPointages();
     const tbody = document.getElementById('reportData');
+    
+    // Pré-calcul des totaux mensuels par agent pour optimiser l'affichage
+    const monthlyMap = {};
+    logs.forEach(p => {
+      if (!p.iso_date) return;
+      const d = new Date(p.iso_date);
+      const key = `${p.name}-${d.getMonth()}-${d.getFullYear()}`;
+      monthlyMap[key] = (monthlyMap[key] || 0) + parseFloat(p.total || 0);
+    });
+
     let html = '', totalH = 0, countRetards = 0;
     
     const filter = document.getElementById('filterAgent').value;
@@ -690,11 +798,16 @@
       if (start && r.isoDate < start) return;
       if (end && r.isoDate > end) return;
       
+      const rDate = new Date(r.iso_date);
+      const key = `${r.name}-${rDate.getMonth()}-${rDate.getFullYear()}`;
+      const monthlyTotal = monthlyMap[key] || 0;
+
       html += `<tr>
         <td>${r.date}</td><td class="fw-bold">${r.name}</td>
         <td>${r.arrivee || '-'}</td><td>${r.pause || '-'}</td>
         <td>${r.retour || '-'}</td><td>${r.depart || '-'}</td>
-        <td>${r.total}h</td> 
+        <td>${r.total}h</td>
+        <td class="text-primary fw-bold">${monthlyTotal.toFixed(2)}h</td>
         <td><span class="status-badge ${r.status === 'RETARD' || r.status.includes('ABSENCE') ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
         <td>${r.motif || '-'}</td>
       </tr>`;
@@ -716,6 +829,7 @@
         </div>
       </div>
     `;
+    updateAgentChart(filter, logs);
   }
 
   async function ajouterAgent() {
