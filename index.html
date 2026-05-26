@@ -695,13 +695,15 @@
   function toggleView() {
     if (!userIsAdmin) {
       const p = prompt("Mot de passe administrateur :");
-      if (p === ADMIN_PWD) {
+      if (p && p.toUpperCase() === ADMIN_PWD) {
         userIsAdmin = true;
         document.getElementById('adminView').classList.remove('hidden');
         document.getElementById('agentView').classList.add('hidden');
         document.getElementById('authBtn').innerText = "Quitter Admin";
         refreshAgentLists();
         loadAdminData();
+      } else if (p !== null) {
+        alert("Mot de passe incorrect.");
       }
     } else {
       location.reload();
