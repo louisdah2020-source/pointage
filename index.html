@@ -312,7 +312,7 @@
     
     const day = now.getDay();
     const h = now.getHours() + (now.getMinutes() / 60);
-    const isWeekend = (day === 0 || (day === 6 && h > 15)); // Dimanche ou Samedi après 15h
+    const isWeekend = (day === 0); // Dimanche uniquement
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
     
