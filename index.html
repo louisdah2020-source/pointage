@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
@@ -229,13 +230,55 @@
           <div class="table-responsive">
             <table class="table table-hover align-middle" id="reportTable">
               <thead class="table-light">
-                <tr><th>Date</th><th>Agent</th><th>Arrivée</th><th>Pause</th><th>Retour</th><th>Départ</th><th>Total</th><th>Cumul Mois</th><th>Statut</th><th>Motif</th></tr>
+                <tr><th>Date</th><th>Agent</th><th>Arrivée</th><th>Pause</th><th>Retour</th><th>Départ</th><th>Total</th><th>Cumul Mois</th><th>Statut</th><th>Motif</th><th>Action</th></tr>
               </thead>
               <tbody id="reportData"></tbody>
             </table>
           </div>
         </div>
 
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Modification de Pointage -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header bg-primary text-white rounded-top-4">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Modifier Pointage</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <input type="hidden" id="editId">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Agent</label>
+          <input type="text" id="editName" class="form-control bg-light" readonly>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6"><label class="form-label small fw-bold">Arrivée</label><input type="time" id="editArrivee" class="form-control"></div>
+          <div class="col-6"><label class="form-label small fw-bold">Départ</label><input type="time" id="editDepart" class="form-control"></div>
+          <div class="col-6"><label class="form-label small fw-bold">Pause</label><input type="time" id="editPause" class="form-control"></div>
+          <div class="col-6"><label class="form-label small fw-bold">Retour</label><input type="time" id="editRetour" class="form-control"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Statut</label>
+          <select id="editStatus" class="form-select">
+            <option value="PRESENT">PRESENT</option>
+            <option value="RETARD">RETARD</option>
+            <option value="ABSENCE (TARDIF)">ABSENCE (TARDIF)</option>
+            <option value="ABSENCE CONSTATED">ABSENCE CONSTATED</option>
+          </select>
+        </div>
+        <div class="mb-0">
+          <label class="form-label small fw-bold">Motif</label>
+          <textarea id="editMotif" class="form-control" rows="2" placeholder="Raison de la modification..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer border-0 p-4 pt-0">
+        <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary rounded-3 px-4" onclick="sauvegarderModificationPointage()">Enregistrer</button>
       </div>
     </div>
   </div>
@@ -841,6 +884,11 @@
         <td class="text-primary fw-bold">${monthlyTotal.toFixed(2)}h</td>
         <td><span class="status-badge ${r.status === 'RETARD' || r.status.includes('ABSENCE') ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
         <td>${r.motif || '-'}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </td>
       </tr>`;
       
       totalH += parseFloat(r.total || 0);
@@ -874,6 +922,46 @@
       </div>
     `;
     updateAgentChart(filter, logs);
+  }
+
+  // Fonction pour charger les données dans la modal
+  async function ouvrirEditeurPointage(id) {
+    const { data, error } = await _supabase.from('pointages').select('*').eq('id', id).single();
+    if (error) return alert("Erreur lors de la récupération des données.");
+
+    document.getElementById('editId').value = data.id;
+    document.getElementById('editName').value = data.name;
+    document.getElementById('editArrivee').value = data.arrivee || '';
+    document.getElementById('editPause').value = data.pause || '';
+    document.getElementById('editRetour').value = data.retour || '';
+    document.getElementById('editDepart').value = data.depart || '';
+    document.getElementById('editStatus').value = data.status;
+    document.getElementById('editMotif').value = data.motif || '';
+
+    const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    editModal.show();
+  }
+
+  // Fonction pour enregistrer les modifications
+  async function sauvegarderModificationPointage() {
+    const id = document.getElementById('editId').value;
+    const updateData = {
+      arrivee: document.getElementById('editArrivee').value,
+      pause: document.getElementById('editPause').value,
+      retour: document.getElementById('editRetour').value,
+      depart: document.getElementById('editDepart').value,
+      status: document.getElementById('editStatus').value,
+      motif: document.getElementById('editMotif').value
+    };
+    updateData.total = calculerHeures(updateData);
+
+    const { error } = await _supabase.from('pointages').update(updateData).eq('id', id);
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
+    else {
+      bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+      loadReports();
+      showFeedback("Pointage mis à jour avec succès.");
+    }
   }
 
   async function envoyerRecapitulatifJournalier(silent = false) {
