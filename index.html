@@ -12,6 +12,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
   <style>
     :root { 
       --primary-color: #2e3192; 
@@ -19,6 +21,7 @@
       --success-color: #00b894;
       --danger-color: #ff7675;
       --bg-app: #f0f2f5;
+      --manager-color: #6c5ce7;
     }
     body { 
       background: linear-gradient(rgba(240, 242, 245, 0.85), rgba(240, 242, 245, 0.85)), url('conseillere.png');
@@ -77,6 +80,23 @@
       max-width: 60px;
       height: auto;
     }
+    .btn-manager {
+      background-color: var(--manager-color);
+      color: white;
+    }
+    .manager-header {
+      background: var(--manager-color);
+      color: white;
+    }
+    @media print {
+      body * { visibility: hidden !important; }
+      #payslipModal, #payslipModal * { visibility: visible !important; }
+      #payslipModal { position: fixed; left: 0; top: 0; width: 100%; margin: 0; padding: 0; display: block !important; opacity: 1 !important; }
+      .modal-dialog { max-width: 100% !important; margin: 0 !important; }
+      .modal-content { border: none !important; box-shadow: none !important; }
+      .modal-footer, .btn-close, .modal-header { display: none !important; }
+      .app-container, body { background: none !important; padding: 0 !important; }
+    }
   </style>
 </head>
 <body>
@@ -94,9 +114,14 @@
   <div class="text-center mb-4">
     <div id="liveClock">00:00:00</div>
     <div id="liveDate" class="text-muted small fw-bold text-uppercase">Lundi 1 Janvier</div>
-    <button id="authBtn" class="btn btn-link text-decoration-none text-muted mt-2" onclick="toggleView()">
-      <i class="bi bi-shield-lock me-1"></i>Admin
-    </button>
+    <div class="d-flex justify-content-center gap-3">
+        <button id="managerAuthBtn" class="btn btn-link text-decoration-none text-muted mt-2" onclick="toggleManagerView()">
+          <i class="bi bi-person-badge me-1"></i>Manager
+        </button>
+        <button id="authBtn" class="btn btn-link text-decoration-none text-muted mt-2" onclick="toggleView()">
+          <i class="bi bi-shield-lock me-1"></i>Admin
+        </button>
+    </div>
   </div>
 
   <!-- VUE AGENT -->
@@ -125,6 +150,30 @@
         <button id="btn-DEPART" class="btn btn-danger btn-pointage hidden" onclick="effectuerPointage('DEPART')">
           <i class="bi bi-stop-circle-fill"></i>Départ
         </button>
+        
+        <hr class="my-3">
+        <button class="btn btn-outline-primary btn-sm w-100 rounded-pill py-2" onclick="document.getElementById('agentRequestSection').classList.toggle('hidden')">
+          <i class="bi bi-calendar-plus me-1"></i>Demander un congé / permission
+        </button>
+      </div>
+
+      <div id="agentRequestSection" class="mt-4 p-3 bg-light rounded-4 hidden">
+        <h6 class="fw-bold small text-primary mb-3 text-uppercase">Nouvelle Demande</h6>
+        <div class="mb-2">
+          <select id="leaveType" class="form-select form-select-sm">
+            <option value="CONGE">Congé Annuel</option>
+            <option value="PERMISSION">Permission Exceptionnelle</option>
+            <option value="MALADIE">Arrêt Maladie</option>
+          </select>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6"><input type="date" id="leaveStart" class="form-control form-control-sm" title="Date de début"></div>
+          <div class="col-6"><input type="date" id="leaveEnd" class="form-control form-control-sm" title="Date de fin"></div>
+        </div>
+        <div class="mb-2">
+          <textarea id="leaveReason" class="form-control form-control-sm" rows="2" placeholder="Motif de la demande..."></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm w-100 rounded-pill" onclick="soumettreDemandeConge()">Envoyer la demande</button>
       </div>
       <div id="feedback" class="mt-3 alert rounded-4 shadow-sm hidden text-center small fw-bold"></div>
     </div>
@@ -132,7 +181,56 @@
     <div id="agentTodaySection" class="card p-4 hidden">
         <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Aujourd'hui</h6>
         <div id="agentHistory"></div>
+        <div id="agentLeavesStatus"></div>
         <div id="agentMonthlyHistory"></div>
+    </div>
+  </div>
+
+  <!-- VUE MANAGER -->
+  <div id="managerView" class="hidden animate__animated animate__fadeIn">
+    <div class="card p-4 mb-4 border-top border-4" style="border-top-color: var(--manager-color) !important;">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0 text-uppercase" style="color: var(--manager-color)">Espace Manager</h5>
+        <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="location.reload()">Quitter</button>
+      </div>
+      <div class="mb-4">
+        <label for="managerName" class="form-label fw-bold small text-muted text-uppercase ms-2">Votre Profil Manager</label>
+        <select id="managerName" class="form-select form-select-lg" onchange="loadManagerTodayStats()">
+          <option value="" disabled selected>Choisir un profil...</option>
+        </select>
+      </div>
+
+      <div id="managerBtnContainer" class="d-grid">
+        <!-- Les boutons de pointage manager seront gérés par la même logique -->
+      </div>
+      <div id="managerFeedback" class="mt-3 alert rounded-4 shadow-sm hidden text-center small fw-bold"></div>
+    </div>
+
+    <div id="managerTodaySection" class="card p-4 mb-4 hidden">
+        <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Mon Historique</h6>
+        <div id="managerHistory"></div>
+        <div id="managerMonthlyHistory"></div>
+    </div>
+
+    <div id="teamStatusSection" class="card p-4">
+        <h6 class="fw-bold mb-3"><i class="bi bi-people-fill me-2"></i>Statut de l'équipe (Aujourd'hui)</h6>
+        <div class="table-responsive">
+            <table class="table table-sm small">
+                <tbody id="teamStatusList"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="performanceStatsUploadSection" class="card p-4 mt-4">
+        <h6 class="fw-bold mb-3"><i class="bi bi-upload me-2"></i>Importer Statistiques Performance</h6>
+        <div class="mb-3">
+            <label for="performanceFileInput" class="form-label small fw-bold">Sélectionner un fichier CSV</label>
+            <input type="file" id="performanceFileInput" class="form-control" accept=".csv">
+        </div>
+        <button class="btn btn-manager w-100" onclick="uploadPerformanceStats()">
+            <i class="bi bi-cloud-arrow-up me-2"></i>Importer et Traiter
+        </button>
+        <div id="performanceUploadFeedback" class="mt-3 alert rounded-4 shadow-sm hidden text-center small fw-bold"></div>
     </div>
   </div>
 
@@ -141,8 +239,11 @@
     <div class="card">
       <div class="admin-header">
         <nav class="nav nav-pills nav-justified">
-          <button class="nav-link active" onclick="switchTab('tab-agents', this)"><i class="bi bi-people me-2"></i>Gestion des Agents</button>
-          <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-file-earmark-bar-graph me-2"></i>Rapports & Statistiques</button>
+          <button class="nav-link active" onclick="switchTab('tab-agents', this)"><i class="bi bi-people"></i> RH</button>
+          <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-bar-chart"></i> Rapports</button>
+          <button class="nav-link" onclick="switchTab('tab-conges', this)"><i class="bi bi-calendar-event"></i> Congés</button>
+          <button class="nav-link" onclick="switchTab('tab-compta', this)"><i class="bi bi-cash-stack"></i> Paie</button>
+          <button class="nav-link" onclick="switchTab('tab-manager', this)"><i class="bi bi-person-badge"></i> Manager</button>
         </nav>
       </div>
       <div class="card-body p-4">
@@ -150,9 +251,11 @@
         <!-- Onglet Agents -->
         <div id="tab-agents">
           <h5>Ajouter un nouvel agent</h5>
-          <div class="input-group mb-4">
-            <input type="text" id="newAgentName" class="form-control" placeholder="NOM DE L'AGENT">
-            <button class="btn btn-primary px-4" onclick="ajouterAgent()"><i class="bi bi-plus-lg me-2"></i>Ajouter</button>
+          <div class="row g-2 mb-4">
+            <div class="col-md-5"><input type="text" id="newAgentName" class="form-control" placeholder="NOM COMPLET"></div>
+            <div class="col-md-3"><input type="text" id="newAgentMatricule" class="form-control" placeholder="MATRICULE"></div>
+            <div class="col-md-3"><input type="number" id="newAgentSalary" class="form-control" placeholder="SALAIRE BASE"></div>
+            <div class="col-md-1"><button class="btn btn-primary w-100" onclick="ajouterAgent()"><i class="bi bi-plus-lg"></i></button></div>
           </div>
           <hr>
           <h5>Liste du personnel</h5>
@@ -237,6 +340,46 @@
           </div>
         </div>
 
+        <!-- Onglet Congés -->
+        <div id="tab-conges" class="hidden">
+          <h5 class="mb-3">Demandes de congés & permissions</h5>
+          <p class="small text-muted mb-4">Gérez ici les demandes soumises par les agents (validation ou refus).</p>
+          <div id="listLeaves" class="row g-3">
+            <div class="text-center py-4 text-muted">Chargement des demandes...</div>
+          </div>
+        </div>
+
+        <!-- Onglet Paie -->
+        <div id="tab-compta" class="hidden">
+          <h5 class="mb-3">Gestion de la Paie</h5>
+          <div class="row g-2 mb-4">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">Mois</label>
+              <select id="payrollMonth" class="form-select">
+                <option value="0">Janvier</option><option value="1">Février</option><option value="2">Mars</option><option value="3">Avril</option><option value="4">Mai</option><option value="5">Juin</option>
+                <option value="6">Juillet</option><option value="7">Août</option><option value="8">Septembre</option><option value="9">Octobre</option><option value="10">Novembre</option><option value="11">Décembre</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold">Année</label>
+              <select id="payrollYear" class="form-select"></select>
+            </div>
+            <div class="col-md-5 d-flex align-items-end gap-2">
+              <button class="btn btn-primary py-2 rounded-3" onclick="calculerPaie()" title="Calculer"><i class="bi bi-calculator"></i></button>
+              <button id="btnSavePayroll" class="btn btn-success py-2 rounded-3 hidden" onclick="enregistrerTouteLaPaie()" title="Enregistrer tout"><i class="bi bi-check-all"></i></button>
+              <button id="btnPdfPayroll" class="btn btn-danger flex-grow-1 py-2 rounded-3 hidden" onclick="genererRapportPDFPaie()"><i class="bi bi-file-pdf me-2"></i>Rapport PDF</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr><th>Agent</th><th>Matricule</th><th>Salaire Base</th><th>Heures Travaillées</th><th>Primes</th><th>Retenues</th><th>Salaire Net</th><th>Action</th></tr>
+              </thead>
+              <tbody id="payrollResults"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -284,10 +427,29 @@
   </div>
 </div>
 
+<!-- Modal Fiche de Paie -->
+<div class="modal fade" id="payslipModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header d-print-none">
+        <h5 class="modal-title fw-bold">Aperçu de la fiche de paie</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-5" id="payslipContent"></div>
+      <div class="modal-footer d-print-none border-0 pt-0">
+        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Fermer</button>
+        <button type="button" class="btn btn-primary px-4" onclick="window.print()"><i class="bi bi-printer me-2"></i>Imprimer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   // --- CONFIGURATION & DONNEES ---
   let userIsAdmin = false;
+  let userIsManager = false;
   const ADMIN_PWD = "ADMIN123";
+  const MANAGER_PWD = "MANAGER123";
   let currentPointage = null; // État global pour synchroniser l'UI avec la base de données
   let lastNotificationMinute = -1;
 
@@ -359,6 +521,15 @@
     if (error) console.error(error);
     return data ? data.map(a => a.name) : [];
   }
+  
+  async function getManagers() {
+    const { data, error } = await _supabase.from('managers').select('name').order('name');
+    if (error) {
+        console.log("Note: Table 'managers' peut-être absente. Utilisation d'une liste vide.");
+        return [];
+    }
+    return data ? data.map(m => m.name) : [];
+  }
 
   async function getPointages() {
     try {
@@ -403,6 +574,31 @@
     }
   }
 
+  function notifierStatutConge(type, statut) {
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    audio.play();
+
+    const isValide = statut === 'VALIDE';
+    const msg = `Mise à jour Congé : Votre demande de ${type} a été ${isValide ? 'VALIDÉE' : 'REFUSÉE'}.`;
+    showFeedback(msg, !isValide);
+
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Statut Congé", { body: msg, icon: "logo.jpg" });
+    }
+  }
+
+  async function accuserReceptionConge(id, statut) {
+    const res = await fetch(`${API_URL}?action=ackLeave&id=${id}`);
+    const json = await res.json();
+    if (!json.success) {
+      console.error("Erreur accusé réception:", error);
+      alert("Erreur lors de l'accusé de réception.");
+    } else {
+      loadAgentTodayStats();
+      showFeedback("Réception accusée avec succès.");
+    }
+  }
+
   // Horloge et Contraintes d'affichage
   function updateClock() {
     const now = new Date();
@@ -419,11 +615,15 @@
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
     
-    const hasAgent = document.getElementById('agentName').value !== "";
+    const agentVal = document.getElementById('agentName').value;
+    const managerVal = document.getElementById('managerName').value;
+    const currentActiveName = userIsManager ? managerVal : agentVal;
+    const hasUser = currentActiveName !== "";
+    
     const p = currentPointage;
 
     // --- LOGIQUE DES NOTIFICATIONS AUTOMATIQUES ---
-    if (hasAgent && !isWeekend && currentMinutes !== lastNotificationMinute) {
+    if (hasUser && !isWeekend && currentMinutes !== lastNotificationMinute) {
       if (currentHours === 10 && currentMinutes === 0 && (!p || !p.arrivee)) {
         envoyerNotificationAgent("Il est 10h00 : Il est temps de pointer votre arrivée !");
         lastNotificationMinute = currentMinutes;
@@ -450,22 +650,32 @@
     }
 
     // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
+    const btnContainerId = userIsManager ? 'managerBtnContainer' : 'btnContainer';
     const arriveeFaite = p && p.arrivee && p.arrivee !== 'NON POINTE';
-    document.getElementById('btn-ARRIVEE').classList.toggle('hidden', !hasAgent || isWeekend || arriveeFaite || h < 8);
+    
+    // Mise à jour dynamique des boutons selon le contexte (Agent ou Manager)
+    const showBtn = (id, condition) => {
+        const btn = document.getElementById(id);
+        if (userIsManager) {
+            // En mode manager, on duplique les boutons dans managerBtnContainer si nécessaire ou on réutilise
+            // Pour simplifier, on déplace les boutons physiquement si on change de vue
+            document.getElementById(btnContainerId).appendChild(btn);
+        } else {
+            document.getElementById('btnContainer').appendChild(btn);
+        }
+        btn.classList.toggle('hidden', !condition);
+    };
 
-    // Pause : Visible si l'arrivée est enregistrée (même en retard) et pas encore de pause
-    document.getElementById('btn-PAUSE').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.arrivee || p.pause || !(h >= 14 && h <= 14.5));
-
-    // Retour : Visible si la pause est enregistrée et pas encore de retour
-    document.getElementById('btn-RETOUR').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.pause || p.retour || !(h >= 15 && h <= 15.5));
-
-    // Départ : Toujours visible si l'arrivée est faite
-    document.getElementById('btn-DEPART').classList.toggle('hidden', !hasAgent || isWeekend || !p || !p.arrivee || p.depart);
+    showBtn('btn-ARRIVEE', hasUser && !isWeekend && !arriveeFaite && h >= 8);
+    showBtn('btn-PAUSE', !userIsManager && hasUser && !isWeekend && p && p.arrivee && !p.pause && (h >= 14 && h <= 14.5));
+    showBtn('btn-RETOUR', !userIsManager && hasUser && !isWeekend && p && p.pause && !p.retour && (h >= 15 && h <= 15.5));
+    showBtn('btn-DEPART', hasUser && !isWeekend && p && p.arrivee && !p.depart);
   }
 
   // Fonction centralisée pour rafraîchir toutes les listes d'agents
   async function refreshAgentLists() {
     const agents = await getAgents();
+    const managers = await getManagers();
     
     // 1. Liste déroulante du pointage (Vue Agent)
     const agentSelect = document.getElementById('agentName');
@@ -478,6 +688,30 @@
       agentSelect.appendChild(option);
     });
     if (currentVal && agents.includes(currentVal)) agentSelect.value = currentVal;
+
+    // 2. Liste déroulante Manager (Vue Manager)
+    const managerSelect = document.getElementById('managerName');
+    if (managerSelect) {
+        const curMan = managerSelect.value;
+        managerSelect.innerHTML = '<option value="" disabled selected>Choisir un profil...</option>';
+        managers.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m; option.textContent = m;
+            managerSelect.appendChild(option);
+        });
+        if (curMan && managers.includes(curMan)) managerSelect.value = curMan;
+    }
+
+    // 3. Liste des managers (Vue Admin)
+    const listManagers = document.getElementById('listManagers');
+    if (listManagers) {
+        listManagers.innerHTML = managers.map(m => `
+            <li class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 bg-light rounded-3">
+                <span class="fw-bold"><i class="bi bi-person-badge me-2"></i>${m}</span>
+                <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerManager('${m}')"><i class="bi bi-trash"></i></button>
+            </li>
+        `).join('');
+    }
 
     // 2. Liste du personnel (Vue Admin)
     const listPersonnel = document.getElementById('listPersonnel');
@@ -517,9 +751,10 @@
   }
 
   async function effectuerPointage(type) {
-    const name = document.getElementById('agentName').value;
-    const agents = await getAgents();
-    if (!name || !agents.includes(name)) return alert("Veuillez sélectionner un agent valide.");
+    const name = userIsManager ? document.getElementById('managerName').value : document.getElementById('agentName').value;
+    if (!name) return alert("Veuillez sélectionner un profil.");
+    
+    const feedbackId = userIsManager ? 'managerFeedback' : 'feedback';
 
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
@@ -551,24 +786,22 @@
       
       entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       logs.push(entry); // Ajout de la nouvelle entrée
-      const { error } = await _supabase.from('pointages').insert([entry]);
-      if (error) {
-        console.error("Erreur Supabase:", error);
-        return alert("Erreur serveur lors du pointage : " + error.message);
-      }
+      const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(entry) });
+      const json = await res.json();
+      if (!json.success) return alert("Erreur lors de l'enregistrement.");
       
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
       if (type === 'ARRIVEE') {
-        // Permettre la régularisation si l'agent était marqué absent par le système
+        // Permettre la régularisation si le profil était marqué absent par le système
         if (entry.arrivee === 'NON POINTE' || entry.status === 'ABSENCE CONSTATED') {
           let newStatus = "PRESENT";
           if (h > 11.5) newStatus = "ABSENCE (TARDIF)";
           else if (h > 10.25) newStatus = "RETARD";
           
-          const { error } = await _supabase.from('pointages').update({ arrivee: timeStr, status: newStatus }).eq('id', entry.id);
-          if (error) return alert("Erreur lors de la régularisation.");
-          showFeedback(`Arrivée régularisée à ${timeStr}`);
+          const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify({...entry, arrivee: timeStr, status: newStatus}) });
+          if (!(await res.json()).success) return alert("Erreur lors de la régularisation.");
+          showFeedback(`Arrivée régularisée à ${timeStr}`, false, feedbackId);
           if (newStatus !== "PRESENT") envoyerAlerteEmail(name, timeStr, newStatus);
           return loadAgentTodayStats();
         }
@@ -579,8 +812,8 @@
         entry[type.toLowerCase()] = timeStr;
         updateData.total = calculerHeures(entry);
       }
-      const { error } = await _supabase.from('pointages').update(updateData).eq('id', entry.id);
-      if (error) return alert("Erreur serveur lors de la mise à jour.");
+      const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify({...entry, ...updateData}) });
+      if (!(await res.json()).success) return alert("Erreur serveur lors de la mise à jour.");
     }
 
     // Enregistrer l'action pour cet appareil
@@ -588,8 +821,9 @@
     if (!deviceLogs[dateKey]) deviceLogs[dateKey] = [];
     deviceLogs[dateKey].push(type);
     saveDeviceLogs(deviceLogs);
-    showFeedback(`Pointage ${type} enregistré à ${timeStr}`);
-    loadAgentTodayStats();
+    showFeedback(`Pointage ${type} enregistré à ${timeStr}`, false, feedbackId);
+    
+    if (userIsManager) loadManagerTodayStats(); else loadAgentTodayStats();
   }
 
   async function loadAgentTodayStats() {
@@ -600,11 +834,73 @@
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
     currentPointage = entry; // Mise à jour de l'état global pour updateClock
-    
+
     const container = document.getElementById('agentHistory');
     const monthlyContainer = document.getElementById('agentMonthlyHistory');
     document.getElementById('agentTodaySection').classList.remove('hidden');
     
+    const performanceStatsDiv = document.getElementById('agentPerformanceStats');
+
+    const resLeaves = await fetch(`${API_URL}?action=getLeaves&name=${encodeURIComponent(name)}`);
+    const jsonLeaves = await resLeaves.json();
+    const leaves = jsonLeaves.success ? jsonLeaves.data.slice(0, 3) : [];
+    const leavesStatusDiv = document.getElementById('agentLeavesStatus');
+    if (leavesStatusDiv) {
+        // Notification sonore et visuelle pour les nouveaux statuts
+        const notified = JSON.parse(localStorage.getItem('notified_leaves')) || {};
+
+        if (leaves) {
+            leaves.forEach(l => {
+                if (l.statut !== 'EN ATTENTE' && notified[l.id] !== l.statut) {
+                    notifierStatutConge(l.type, l.statut);
+                    notified[l.id] = l.statut;
+                    localStorage.setItem('notified_leaves', JSON.stringify(notified));
+                }
+            });
+        }
+
+        if (!leaves || leaves.length === 0) {
+            leavesStatusDiv.innerHTML = "";
+        } else {
+            leavesStatusDiv.innerHTML = `
+                <hr class="my-3">
+                <h6 class="fw-bold small mb-2 text-uppercase text-muted">Statut de mes demandes</h6>
+                ${leaves.map(l => {
+                    let badgeClass = 'bg-warning text-dark';
+                    if (l.statut === 'VALIDE') badgeClass = 'bg-success';
+                    if (l.statut === 'REFUSE') badgeClass = 'bg-danger';
+
+                    const needsAck = l.statut !== 'EN ATTENTE' && !l.acknowledged_at;
+
+                    return `<div class="mb-2 p-2 bg-light rounded-4 border-start border-4 ${l.statut === 'VALIDE' ? 'border-success' : (l.statut === 'REFUSE' ? 'border-danger' : 'border-warning')}" style="font-size: 0.75rem;">
+                        <div class="d-flex justify-content-between align-items-center">
+                        <span><strong>${l.type}</strong> (${new Date(l.date_debut).toLocaleDateString()})</span>
+                        <span class="badge ${badgeClass}">${l.statut}</span>
+                        </div>
+                        ${needsAck ? `<div class="mt-2 d-grid"><button class="btn btn-primary btn-sm rounded-pill py-1" style="font-size: 0.7rem;" onclick="accuserReceptionConge('${l.id}', '${l.statut}')"><i class="bi bi-check2-circle me-1"></i>Accuser réception</button></div>` : ''}
+                    </div>`;
+                }).join('')}`;
+        }
+    }
+
+    const resPerf = await fetch(`${API_URL}?action=getPerformance&name=${encodeURIComponent(name)}&date=${now.toISOString().split('T')[0]}`);
+    const jsonPerf = await resPerf.json();
+    const performanceStats = jsonPerf.success ? jsonPerf.data : null;
+
+    if (performanceStats) {
+        performanceStatsDiv.innerHTML = `
+            <hr class="my-3">
+            <h6 class="fw-bold small mb-2 text-uppercase text-muted">Mes Statistiques Performance (Aujourd'hui)</h6>
+            <div class="row g-2 text-center">
+                <div class="col-3"><div class="p-2 bg-success-subtle rounded-3 small fw-bold">${performanceStats.dons}</div><small class="text-muted">DONS</small></div>
+                <div class="col-3"><div class="p-2 bg-danger-subtle rounded-3 small fw-bold">${performanceStats.refus_arg}</div><small class="text-muted">REFUS</small></div>
+                <div class="col-3"><div class="p-2 bg-warning-subtle rounded-3 small fw-bold">${performanceStats.indecis}</div><small class="text-muted">INDÉCIS</small></div>
+                <div class="col-3"><div class="p-2 bg-info-subtle rounded-3 small fw-bold">${performanceStats.del}</div><small class="text-muted">DEL</small></div>
+            </div>
+        `;
+    } else {
+        performanceStatsDiv.innerHTML = `<div class="alert alert-light small text-muted">Aucune statistique de performance pour aujourd'hui.</div>`;
+    }
     // Gestion du cumul mensuel (toujours visible pour le mois en cours)
     const now = new Date();
     monthlyContainer.innerHTML = '';
@@ -673,6 +969,100 @@
     updateClock(); // Pour rafraîchir les boutons
   }
 
+  async function loadManagerTodayStats() {
+    const name = document.getElementById('managerName').value;
+    if(!name) return;
+    
+    const dateKey = new Date().toLocaleDateString('fr-FR');
+    const pointages = await getPointages();
+    const entry = pointages.find(l => l.date === dateKey && l.name === name);
+    currentPointage = entry;
+    
+    // --- Historique Personnel du Manager ---
+    const historyContainer = document.getElementById('managerHistory');
+    const monthlyContainer = document.getElementById('managerMonthlyHistory');
+    document.getElementById('managerTodaySection').classList.remove('hidden');
+
+    const managerPerformanceStatsDiv = document.getElementById('managerPerformanceStats');
+
+    const now = new Date();
+    const targetMonth = now.getMonth();
+    const targetYear = now.getFullYear();
+
+    const monthlyEntries = pointages.filter(p => {
+        if (p.name !== name || !p.iso_date) return false;
+        const parts = p.iso_date.split('-');
+        return (parseInt(parts[1]) - 1) === targetMonth && parseInt(parts[0]) === targetYear;
+    });
+
+    const mStats = monthlyEntries.reduce((acc, p) => {
+        acc.work += parseFloat(p.total || 0);
+        if (p.status === 'RETARD') acc.retards++;
+        else if (p.status && p.status.includes('ABSENCE')) acc.absences++;
+        return acc;
+    }, { work: 0, retards: 0, absences: 0 });
+
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    
+    monthlyContainer.innerHTML = `
+        <div class="alert alert-info mt-3 mb-0 py-2 rounded-4 shadow-sm border-0" style="background-color: #e3f2fd;">
+            <small class="fw-bold text-uppercase d-block mb-1 text-primary" style="font-size: 0.7rem;">
+                <i class="bi bi-bar-chart-fill me-1"></i>Mes Statistiques ${monthNames[targetMonth]}
+            </small>
+            <div class="row g-0 text-center mt-2">
+                <div class="col-4 border-end"><div class="h6 mb-0 fw-bold text-dark">${mStats.work.toFixed(1)}h</div><small class="text-muted" style="font-size: 0.6rem;">TRAVAIL</small></div>
+                <div class="col-4 border-end"><div class="h6 mb-0 fw-bold text-danger">${mStats.retards}</div><small class="text-muted" style="font-size: 0.6rem;">RETARDS</small></div>
+                <div class="col-4"><div class="h6 mb-0 fw-bold text-danger">${mStats.absences}</div><small class="text-muted" style="font-size: 0.6rem;">ABSENCES</small></div>
+            </div>
+        </div>`;
+
+    if(!entry) {
+        historyContainer.innerHTML = '<div class="text-muted small">Aucun pointage pour le moment.</div>';
+    } else {
+        historyContainer.innerHTML = `
+            <div class="history-item d-flex justify-content-between"><span>Arrivée</span> <strong>${entry.arrivee || '--:--'}</strong></div>
+            <div class="history-item d-flex justify-content-between"><span>Départ</span> <strong>${entry.depart || '--:--'}</strong></div>`;
+    }
+
+    // Charger le statut de l'équipe pour le manager
+    const agents = await getAgents();
+    const todayLogs = pointages.filter(p => p.date === dateKey);
+    
+    const teamHtml = agents.map(agent => {
+        const p = todayLogs.find(l => l.name === agent);
+        const statusClass = p ? (p.status === 'PRESENT' ? 'text-success' : 'text-danger') : 'text-muted';
+        const statusText = p ? p.status : 'NON POINTÉ';
+        return `
+            <tr>
+                <td class="fw-bold">${agent}</td>
+                <td><span class="${statusClass} fw-bold" style="font-size: 0.75rem;">${statusText}</span></td>
+                <td class="text-end text-muted">${p ? (p.arrivee || '--:--') : '--:--'}</td>
+            </tr>
+        `;
+    }).join('');
+    document.getElementById('teamStatusList').innerHTML = teamHtml;
+
+    const resMPerf = await fetch(`${API_URL}?action=getPerformance&name=${encodeURIComponent(name)}&date=${now.toISOString().split('T')[0]}`);
+    const jsonMPerf = await resMPerf.json();
+    const managerPerfStats = jsonMPerf.success ? jsonMPerf.data : null;
+
+    if (managerPerfStats) {
+        managerPerformanceStatsDiv.innerHTML = `
+            <hr class="my-3">
+            <h6 class="fw-bold small mb-2 text-uppercase text-muted">Mes Statistiques Performance (Aujourd'hui)</h6>
+            <div class="row g-2 text-center">
+                <div class="col-3"><div class="p-2 bg-success-subtle rounded-3 small fw-bold">${managerPerfStats.dons}</div><small class="text-muted">DONS</small></div>
+                <div class="col-3"><div class="p-2 bg-danger-subtle rounded-3 small fw-bold">${managerPerfStats.refus_arg}</div><small class="text-muted">REFUS</small></div>
+                <div class="col-3"><div class="p-2 bg-warning-subtle rounded-3 small fw-bold">${managerPerfStats.indecis}</div><small class="text-muted">INDÉCIS</small></div>
+                <div class="col-3"><div class="p-2 bg-info-subtle rounded-3 small fw-bold">${managerPerfStats.del}</div><small class="text-muted">DEL</small></div>
+            </div>
+        `;
+    } else {
+        managerPerformanceStatsDiv.innerHTML = `<div class="alert alert-light small text-muted">Aucune statistique de performance pour aujourd'hui.</div>`;
+    }
+    updateClock();
+  }
+
   /**
    * Purge les anciens journaux de sécurité (device_logs) du localStorage.
    * Conserve les logs pour la période définie par DEVICE_LOG_RETENTION_DAYS.
@@ -711,8 +1101,8 @@
     loadAdminData(); // Rafraîchir l'affichage si nécessaire
   }
 
-  function showFeedback(msg, isError = false) {
-    const f = document.getElementById('feedback');
+  function showFeedback(msg, isError = false, elementId = 'feedback') {
+    const f = document.getElementById(elementId);
     f.className = `mt-3 alert rounded-4 shadow-sm ${isError ? 'alert-danger' : 'alert-success'}`;
     f.innerText = msg;
     f.classList.remove('hidden');
@@ -782,6 +1172,114 @@
     }
   }
 
+  async function soumettreDemandeConge() {
+    const name = document.getElementById('agentName').value;
+    if (!name) return alert("Veuillez sélectionner votre nom d'abord.");
+
+    const type = document.getElementById('leaveType').value;
+    const start = document.getElementById('leaveStart').value;
+    const end = document.getElementById('leaveEnd').value;
+    const reason = document.getElementById('leaveReason').value;
+
+    if (!start || !end || !reason) return alert("Veuillez remplir tous les champs (dates et motif).");
+
+    const payload = {
+      agent_name: name,
+      type: type,
+      date_debut: start,
+      date_fin: end,
+      motif: reason,
+      statut: 'EN ATTENTE',
+      created_at: new Date().toISOString()
+    };
+
+    const res = await fetch(`${API_URL}?action=submitLeave`, { method: 'POST', body: JSON.stringify(payload) });
+    const json = await res.json();
+
+    if (!json.success) {
+      alert("Erreur lors de l'envoi");
+    } else {
+      showFeedback("Votre demande a été envoyée avec succès !");
+      document.getElementById('leaveStart').value = "";
+      document.getElementById('leaveEnd').value = "";
+      document.getElementById('leaveReason').value = "";
+      document.getElementById('agentRequestSection').classList.add('hidden');
+      
+      // Notification aux RH
+      envoyerAlerteEmail(name, new Date().toLocaleTimeString(), `DEMANDE DE ${type}`, `Période: du ${start} au ${end}. Motif: ${reason}`);
+      loadAgentTodayStats(); // Rafraîchir l'affichage pour voir la nouvelle demande
+    }
+  }
+
+  async function loadPendingLeaves() {
+    const res = await fetch(`${API_URL}?action=getLeaves`);
+    const json = await res.json();
+    const data = json.success ? json.data : [];
+
+    const container = document.getElementById('listLeaves');
+    if (!data || data.length === 0) {
+      container.innerHTML = '<div class="col-12 text-center py-4 text-muted">Aucune demande enregistrée dans la base.</div>';
+      return;
+    }
+
+    container.innerHTML = data.map(leave => {
+      let badgeClass = 'bg-warning text-dark';
+      if (leave.statut === 'VALIDE') badgeClass = 'bg-success';
+      if (leave.statut === 'REFUSE') badgeClass = 'bg-danger';
+
+      const ackInfo = leave.acknowledged_at 
+        ? `<div class="mt-2 small text-success fw-bold text-end"><i class="bi bi-check-all"></i> Lu le ${new Date(leave.acknowledged_at).toLocaleString('fr-FR')}</div>`
+        : (leave.statut !== 'EN ATTENTE' ? `<div class="mt-2 small text-muted text-end"><i class="bi bi-clock"></i> Non lu par l'agent</div>` : '');
+
+      return `
+        <div class="col-md-6">
+          <div class="card h-100 border-0 shadow-sm bg-light rounded-4">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0">${leave.agent_name}</h6>
+                <span class="badge ${badgeClass} small">${leave.statut}</span>
+              </div>
+              <div class="small text-primary fw-bold mb-2">${leave.type}</div>
+              <div class="small mb-2"><i class="bi bi-calendar-range me-1"></i>Du ${new Date(leave.date_debut).toLocaleDateString()} au ${new Date(leave.date_fin).toLocaleDateString()}</div>
+              <div class="p-2 bg-white rounded-3 small mb-3 border"><em>${leave.motif}</em></div>
+              ${ackInfo}
+              ${leave.statut === 'EN ATTENTE' ? `
+                <div class="d-flex gap-2">
+                  <button class="btn btn-success btn-sm w-100 rounded-pill" onclick="updateLeaveStatus('${leave.id}', 'VALIDE')"><i class="bi bi-check-lg"></i> Valider</button>
+                  <button class="btn btn-danger btn-sm w-100 rounded-pill" onclick="updateLeaveStatus('${leave.id}', 'REFUSE')"><i class="bi bi-x-lg"></i> Refuser</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function updateLeaveStatus(id, newStatus) {
+    if (!confirm(`Voulez-vous vraiment ${newStatus === 'VALIDE' ? 'valider' : 'refuser'} cette demande ?`)) return;
+    const res = await fetch(`${API_URL}?action=updateLeaveStatus`, { method: 'POST', body: JSON.stringify({id, statut: newStatus}) });
+    if (!(await res.json()).success) alert("Erreur lors de la mise à jour.");
+    else {
+      showFeedback(`Demande mise à jour avec succès.`);
+      loadPendingLeaves();
+    }
+  }
+
+  function toggleManagerView() {
+    if (!userIsManager) {
+      const p = prompt("Code Manager :");
+      if (p && p.toUpperCase() === MANAGER_PWD) {
+        userIsManager = true;
+        document.getElementById('managerView').classList.remove('hidden');
+        document.getElementById('agentView').classList.add('hidden');
+        document.getElementById('managerAuthBtn').innerText = "Quitter Manager";
+        refreshAgentLists();
+      } else if (p !== null) alert("Code incorrect.");
+    } else {
+      location.reload();
+    }
+  }
+
   async function loadAdminData() {
     loadReports();
     detecterAbsencesAutomatiques();
@@ -790,13 +1288,19 @@
   }
 
   function switchTab(id, el) {
-    document.getElementById('tab-agents').classList.add('hidden');
-    document.getElementById('tab-reports').classList.add('hidden');
+    // Masquer tous les onglets possibles pour éviter les superpositions
+    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-compta', 'tab-manager'].forEach(tabId => {
+      const tabEl = document.getElementById(tabId);
+      if (tabEl) tabEl.classList.add('hidden');
+    });
+
     document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
     document.getElementById(id).classList.remove('hidden');
     el.classList.add('active');
     if (id === 'tab-reports') {
       loadReports(); // Recharger les rapports si on bascule sur cet onglet
+    } else if (id === 'tab-conges') {
+      loadPendingLeaves();
     } else if (id === 'tab-agents') {
       getAgents().then(agents => {
         document.getElementById('manualAgentSelect').innerHTML = agents.map(a => `<option>${a}</option>`).join('');
@@ -805,6 +1309,14 @@
         document.getElementById('manualTime').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
         toggleManualTimeVisibility();
       });
+    } else if (id === 'tab-compta') {
+        const yearSelect = document.getElementById('payrollYear');
+        const currentYear = new Date().getFullYear();
+        yearSelect.innerHTML = '';
+        for (let y = currentYear; y >= currentYear - 2; y--) {
+            yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+        }
+        document.getElementById('payrollMonth').value = new Date().getMonth();
     }
   }
 
@@ -926,9 +1438,8 @@
 
   // Fonction pour charger les données dans la modal
   async function ouvrirEditeurPointage(id) {
-    const { data, error } = await _supabase.from('pointages').select('*').eq('id', id).single();
-    if (error) return alert("Erreur lors de la récupération des données.");
-
+    const logs = await getPointages();
+    const data = logs.find(l => l.id == id);
     document.getElementById('editId').value = data.id;
     document.getElementById('editName').value = data.name;
     document.getElementById('editArrivee').value = data.arrivee || '';
@@ -954,9 +1465,10 @@
       motif: document.getElementById('editMotif').value
     };
     updateData.total = calculerHeures(updateData);
+    updateData.id = id;
 
-    const { error } = await _supabase.from('pointages').update(updateData).eq('id', id);
-    if (error) alert("Erreur lors de la mise à jour : " + error.message);
+    const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(updateData) });
+    if (!(await res.json()).success) alert("Erreur lors de la mise à jour.");
     else {
       bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
       loadReports();
@@ -1002,12 +1514,37 @@
 
   async function ajouterAgent() {
     const n = document.getElementById('newAgentName').value.trim().toUpperCase();
+    const m = document.getElementById('newAgentMatricule').value.trim();
+    const s = document.getElementById('newAgentSalary').value;
+    
     if (n) {
       const agents = await getAgents();
       if (agents.includes(n)) return alert("Existe déjà");
-      await _supabase.from('agents').insert([{ name: n }]);
+      await _supabase.from('agents').insert([{ name: n, matricule: m, salaire_base: s }]);
       document.getElementById('newAgentName').value = "";
+      document.getElementById('newAgentMatricule').value = "";
+      document.getElementById('newAgentSalary').value = "";
       loadAdminData();
+    }
+  }
+
+  async function ajouterManager() {
+    const n = document.getElementById('newManagerName').value.trim().toUpperCase();
+    if (n) {
+      const managers = await getManagers();
+      if (managers.includes(n)) return alert("Existe déjà");
+      // On utilise une table 'managers' dédiée ou on peut adapter selon la structure
+      const { error } = await _supabase.from('managers').insert([{ name: n }]);
+      if (error) return alert("Erreur: " + error.message);
+      document.getElementById('newManagerName').value = "";
+      refreshAgentLists();
+    }
+  }
+
+  async function supprimerManager(n) {
+    if (confirm(`Supprimer le manager ${n} ?`)) {
+      await _supabase.from('managers').delete().eq('name', n);
+      refreshAgentLists();
     }
   }
 
@@ -1067,10 +1604,359 @@
     link.click();
   }
 
+  async function calculerPaie() {
+    const month = parseInt(document.getElementById('payrollMonth').value) + 1;
+    const year = parseInt(document.getElementById('payrollYear').value);
+    const monthStr = month.toString().padStart(2, '0');
+    const prefix = `${year}-${monthStr}`;
+
+    // 1. Charger tous les agents pour avoir matricule et salaire de base
+    const { data: agents, error: errA } = await _supabase.from('agents').select('*').order('name');
+    if (errA) return alert("Erreur agents: " + errA.message);
+
+    // 2. Charger tous les pointages du mois sélectionné
+    const { data: logs, error: errL } = await _supabase.from('pointages').select('name, total').like('iso_date', `${prefix}%`);
+    if (errL) return alert("Erreur pointages: " + errL.message);
+
+    // 2.5 Charger les ajustements (primes/retenues) du mois
+    const { data: adjustments } = await _supabase.from('primes_retenues').select('*').eq('mois', month).eq('annee', year);
+    const adjMap = {};
+    if (adjustments) {
+        adjustments.forEach(adj => { adjMap[adj.agent_name] = adj; });
+    }
+
+    // 3. Agréger les heures par agent
+    const hoursMap = {};
+    logs.forEach(l => {
+        hoursMap[l.name] = (hoursMap[l.name] || 0) + parseFloat(l.total || 0);
+    });
+
+    // 4. Afficher les résultats
+    const tbody = document.getElementById('payrollResults');
+    if (agents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3">Aucun agent configuré.</td></tr>';
+        document.getElementById('btnSavePayroll').classList.add('hidden');
+        document.getElementById('btnPdfPayroll').classList.add('hidden');
+        return;
+    }
+    document.getElementById('btnSavePayroll').classList.remove('hidden');
+    document.getElementById('btnPdfPayroll').classList.remove('hidden');
+
+    tbody.innerHTML = agents.map(a => {
+        const hours = hoursMap[a.name] || 0;
+        const base = parseFloat(a.salaire_base || 0);
+        const adj = adjMap[a.name] || { montant_prime: 0, montant_retenue: 0 };
+        const prime = parseFloat(adj.montant_prime || 0);
+        const retenue = parseFloat(adj.montant_retenue || 0);
+
+        // Formule : Salaire proratisé sur une base de 173.33h/mois
+        const net = ((base / 173.33) * hours) + prime - retenue;
+        
+        return `
+            <tr class="payroll-row" data-agent="${a.name}">
+                <td class="fw-bold text-dark">${a.name}</td>
+                <td>${a.matricule || '---'}</td>
+                <td>${base.toLocaleString()}</td>
+                <td class="fw-bold">${hours.toFixed(2)}h</td>
+                <td><input type="number" class="form-control form-control-sm payroll-prime" style="max-width: 100px" value="${prime}" oninput="updateRowNet(this)"></td>
+                <td><input type="number" class="form-control form-control-sm payroll-retenue" style="max-width: 100px" value="${retenue}" oninput="updateRowNet(this)"></td>
+                <td class="text-success fw-bold payroll-net" data-base="${base}" data-hours="${hours}">${net.toLocaleString(undefined, {maximumFractionDigits: 0})} CFA</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="visualiserFichePaieFromRow(this)">
+                        <i class="bi bi-file-earmark-text"></i> Fiche
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+  }
+
+  async function enregistrerTouteLaPaie() {
+    const month = parseInt(document.getElementById('payrollMonth').value) + 1;
+    const year = parseInt(document.getElementById('payrollYear').value);
+    const rows = document.querySelectorAll('.payroll-row');
+    
+    const btn = document.getElementById('btnSavePayroll');
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>...';
+
+    try {
+      for (const row of rows) {
+        const agentName = row.dataset.agent;
+        const prime = parseFloat(row.querySelector('.payroll-prime').value) || 0;
+        const retenue = parseFloat(row.querySelector('.payroll-retenue').value) || 0;
+
+        const { data: existing } = await _supabase.from('primes_retenues').select('id')
+            .eq('agent_name', agentName).eq('mois', month).eq('annee', year).maybeSingle();
+
+        if (existing) {
+            await _supabase.from('primes_retenues').update({ 
+                montant_prime: prime, 
+                montant_retenue: retenue 
+            }).eq('id', existing.id);
+        } else {
+            await _supabase.from('primes_retenues').insert([{ 
+                agent_name: agentName, 
+                mois: month, 
+                annee: year, 
+                montant_prime: prime,
+                montant_retenue: retenue
+            }]);
+        }
+      }
+      showFeedback("Toute la paie du mois a été enregistrée.");
+      calculerPaie();
+    } catch (e) {
+      alert("Erreur lors de l'enregistrement : " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalContent;
+    }
+  }
+
+  async function genererRapportPDFPaie() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l', 'mm', 'a4'); // Mode Paysage (Landscape)
+    
+    const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
+    const year = document.getElementById('payrollYear').value;
+    
+    // En-tête du document
+    doc.setFontSize(22);
+    doc.setTextColor(46, 49, 146);
+    doc.text("MEDIA YAB sarl", 148, 20, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setTextColor(50);
+    doc.text(`RÉCAPITULATIF DES VIREMENTS DE PAIE - ${monthText.toUpperCase()} ${year}`, 148, 30, { align: 'center' });
+
+    // Récupération des données depuis le tableau HTML
+    const rows = [];
+    const tableRows = document.querySelectorAll('#payrollResults tr');
+    let totalNetGlobal = 0;
+
+    tableRows.forEach(tr => {
+        if (tr.cells.length < 7) return;
+        const agent = tr.cells[0].innerText;
+        const matricule = tr.cells[1].innerText;
+        const hours = tr.cells[3].innerText;
+        const prime = tr.querySelector('.payroll-prime').value;
+        const retenue = tr.querySelector('.payroll-retenue').value;
+        const netStr = tr.querySelector('.payroll-net').innerText;
+        
+        const netVal = parseInt(netStr.replace(/[^0-9]/g, '')) || 0;
+        totalNetGlobal += netVal;
+
+        rows.push([
+            agent,
+            matricule,
+            hours,
+            prime + " CFA",
+            retenue + " CFA",
+            netStr
+        ]);
+    });
+
+    // Génération du tableau avec autoTable
+    doc.autoTable({
+        startY: 40,
+        head: [['Agent', 'Matricule', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
+        body: rows,
+        foot: [['TOTAL GÉNÉRAL', '', '', '', '', totalNetGlobal.toLocaleString() + " CFA"]],
+        theme: 'grid',
+        headStyles: { fillColor: [46, 49, 146], halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'right', fontStyle: 'bold' },
+        columnStyles: {
+            2: { halign: 'center' },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+            5: { halign: 'right', fontStyle: 'bold' }
+        }
+    });
+
+    // Pied de page (Signatures)
+    const finalY = doc.lastAutoTable.finalY + 25;
+    doc.setFontSize(11);
+    doc.text("Fait à Abidjan, le " + new Date().toLocaleDateString('fr-FR'), 25, finalY);
+    doc.text("Signature et Cachet Direction", 230, finalY);
+
+    doc.save(`Rapport_Virements_Paie_${monthText}_${year}.pdf`);
+  }
+
+  function updateRowNet(input) {
+    const row = input.closest('tr');
+    const netCol = row.querySelector('.payroll-net');
+    const base = parseFloat(netCol.dataset.base);
+    const hours = parseFloat(netCol.dataset.hours);
+    const prime = parseFloat(row.querySelector('.payroll-prime').value) || 0;
+    const retenue = parseFloat(row.querySelector('.payroll-retenue').value) || 0;
+    const net = ((base / 173.33) * hours) + prime - retenue;
+    netCol.innerText = net.toLocaleString(undefined, {maximumFractionDigits: 0}) + " CFA";
+  }
+
+  function visualiserFichePaieFromRow(btn) {
+    const row = btn.closest('tr');
+    const name = row.dataset.agent;
+    const matricule = row.cells[1].innerText;
+    const netCol = row.querySelector('.payroll-net');
+    const base = parseFloat(netCol.dataset.base);
+    const hours = parseFloat(netCol.dataset.hours);
+    const prime = parseFloat(row.querySelector('.payroll-prime').value) || 0;
+    const retenue = parseFloat(row.querySelector('.payroll-retenue').value) || 0;
+    const net = ((base / 173.33) * hours) + prime - retenue;
+
+    visualiserFichePaie(name, matricule, base, hours, net, prime, retenue);
+  }
+
+  function visualiserFichePaie(name, matricule, base, hours, net, prime, retenue) {
+    const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
+    const year = document.getElementById('payrollYear').value;
+    const proratedBase = (base / 173.33) * hours;
+    
+    const content = `
+        <div class="text-center mb-5">
+            <img src="logo.jpg" style="max-width: 100px;" class="mb-3 rounded-circle border">
+            <h3 class="fw-bold mb-0">BULLETIN DE PAIE</h3>
+            <p class="text-muted small">Période du mois de : <strong>${monthText} ${year}</strong></p>
+        </div>
+        <div class="row mb-5 g-4">
+            <div class="col-6">
+                <h6 class="fw-bold text-uppercase text-primary border-bottom pb-2 mb-3">Employeur</h6>
+                <p class="mb-1 fw-bold">MEDIA YAB sarl</p>
+                <p class="small text-muted mb-0">Le partenaire par excellence</p>
+            </div>
+            <div class="col-6">
+                <h6 class="fw-bold text-uppercase text-primary border-bottom pb-2 mb-3">Salarié</h6>
+                <p class="mb-1 fw-bold">${name}</p>
+                <p class="small mb-1">Matricule : <strong>${matricule || 'N/A'}</strong></p>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle">
+                <thead class="table-light text-center small">
+                    <tr><th>DÉSIGNATION</th><th>BASE / QUANTITÉ</th><th>TAUX UNITAIRE</th><th>MONTANT</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="ps-3">Salaire de Base (Mensuel)</td>
+                        <td class="text-center">173.33 h</td>
+                        <td class="text-end">${(base/173.33).toFixed(2)}</td>
+                        <td class="text-end fw-bold">${base.toLocaleString()}</td>
+                    </tr>
+                    <tr class="table-light">
+                        <td class="ps-3">Heures travaillées réelles</td>
+                        <td class="text-center">${hours.toFixed(2)} h</td>
+                        <td class="text-end">${(base/173.33).toFixed(2)}</td>
+                        <td class="text-end fw-bold">${proratedBase.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                    </tr>
+                    ${prime > 0 ? `<tr><td class="ps-3 text-success small">Primes / Bonus (+)</td><td class="text-center">-</td><td class="text-end">-</td><td class="text-end fw-bold text-success">${prime.toLocaleString()}</td></tr>` : ''}
+                    ${retenue > 0 ? `<tr><td class="ps-3 text-danger small">Retenues / Avances (-)</td><td class="text-center">-</td><td class="text-end">-</td><td class="text-end fw-bold text-danger">${retenue.toLocaleString()}</td></tr>` : ''}
+                    <tr class="fw-bold border-top-2 border-primary">
+                        <td colspan="3" class="text-end py-3 text-uppercase">Net à payer (CFA)</td>
+                        <td class="text-end py-3 text-primary h5 mb-0">${net.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-5 pt-5 row text-center">
+            <div class="col-6"><p class="small border-top d-inline-block pt-2 px-5">Signature Salarié</p></div>
+            <div class="col-6"><p class="small border-top d-inline-block pt-2 px-5">Signature Employeur</p></div>
+        </div>`;
+    
+    document.getElementById('payslipContent').innerHTML = content;
+    new bootstrap.Modal(document.getElementById('payslipModal')).show();
+  }
+
   setInterval(updateClock, 1000);
   purgeOldDeviceLogs(); // Exécuter la purge au chargement de l'application
   refreshAgentLists();
+  
+  // Initialisation des vues
   updateClock();
+
+  // --- Nouvelle fonction pour l'importation des statistiques de performance ---
+  async function uploadPerformanceStats() {
+    const fileInput = document.getElementById('performanceFileInput');
+    const feedbackDiv = document.getElementById('performanceUploadFeedback');
+    feedbackDiv.classList.add('hidden'); // Masquer le feedback précédent
+
+    if (!fileInput.files.length) {
+        showFeedback("Veuillez sélectionner un fichier CSV.", true, 'performanceUploadFeedback');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+        const text = e.target.result;
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+
+        if (lines.length === 0) {
+            showFeedback("Le fichier CSV est vide.", true, 'performanceUploadFeedback');
+            return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim());
+        const expectedHeaders = ['Agent Name', 'Date', 'DONS', 'REFUS ARG', 'INDECIS', 'DEL'];
+
+        if (!expectedHeaders.every(h => headers.includes(h))) {
+            showFeedback("En-têtes CSV invalides. Attendu: " + expectedHeaders.join(', '), true, 'performanceUploadFeedback');
+            return;
+        }
+
+        const recordsToInsert = [];
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim());
+            if (values.length !== headers.length) {
+                console.warn(`Ligne ${i + 1} ignorée en raison d'un nombre de colonnes incorrect.`);
+                continue;
+            }
+
+            const record = {};
+            headers.forEach((header, index) => {
+                record[header] = values[index];
+            });
+
+            recordsToInsert.push({
+                agent_name: record['Agent Name'],
+                date: record['Date'], // Assuming YYYY-MM-DD format
+                dons: parseInt(record['DONS'] || 0),
+                refus_arg: parseInt(record['REFUS ARG'] || 0),
+                indecis: parseInt(record['INDECIS'] || 0),
+                del: parseInt(record['DEL'] || 0),
+            });
+        }
+
+        if (recordsToInsert.length === 0) {
+            showFeedback("Aucune donnée valide à importer depuis le fichier CSV.", true, 'performanceUploadFeedback');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_URL}?action=upsertPerformance`, { method: 'POST', body: JSON.stringify(recordsToInsert) });
+            const json = await res.json();
+
+            if (!json.success) {
+                showFeedback("Erreur lors de l'importation des données", true, 'performanceUploadFeedback');
+            } else {
+                showFeedback(`Importation réussie de ${recordsToInsert.length} enregistrements.`, false, 'performanceUploadFeedback');
+                // Rafraîchir les statistiques du manager et de l'agent si nécessaire
+                if (userIsManager) loadManagerTodayStats();
+                if (document.getElementById('agentName').value) loadAgentTodayStats();
+            }
+        } catch (e) {
+            console.error("Erreur inattendue lors de l'importation:", e);
+            showFeedback("Une erreur inattendue est survenue lors de l'importation.", true, 'performanceUploadFeedback');
+        }
+    };
+
+    reader.onerror = () => {
+        showFeedback("Erreur lors de la lecture du fichier.", true, 'performanceUploadFeedback');
+    };
+
+    reader.readAsText(file);
+  }
 </script>
 </body>
 </html>
