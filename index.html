@@ -181,6 +181,7 @@
         <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Aujourd'hui</h6>
         <div id="agentHistory"></div>
         <div id="agentLeavesStatus"></div>
+        <div id="agentPerformanceStats"></div>
         <div id="agentMonthlyHistory"></div>
     </div>
   </div>
@@ -207,6 +208,7 @@
 
     <div id="managerTodaySection" class="card p-4 mb-4 hidden">
         <h6 class="fw-bold mb-3"><i class="bi bi-calendar-check me-2"></i>Mon Historique</h6>
+        <div id="managerPerformanceStats"></div>
         <div id="managerHistory"></div>
         <div id="managerMonthlyHistory"></div>
     </div>
@@ -618,15 +620,14 @@
   // Horloge et Contraintes d'affichage
   function updateClock() {
     const now = new Date();
-    const dateKey = now.toLocaleDateString('fr-FR');
     const currentHours = now.getHours();
     const currentMinutes = now.getMinutes();
-
     document.getElementById('liveClock').innerText = now.toLocaleTimeString('fr-FR');
     document.getElementById('liveDate').innerText = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
     
     const day = now.getDay();
     const h = now.getHours() + (now.getMinutes() / 60);
+    const dateKey = now.toLocaleDateString('fr-FR');
     const isWeekend = (day === 0); // Dimanche uniquement
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
@@ -657,11 +658,10 @@
 
     // --- ENVOI AUTOMATIQUE DU RÉCAPITULATIF (ADMIN) ---
     // Se déclenche à 19h45 si l'admin est connecté
-    const todayStr = now.toLocaleDateString('fr-FR');
     const lastSent = localStorage.getItem('lastSummarySentDate');
     
-    if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== todayStr) {
-      localStorage.setItem('lastSummarySentDate', todayStr);
+    if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== dateKey) {
+      localStorage.setItem('lastSummarySentDate', dateKey);
       envoyerRecapitulatifJournalier(true); // true pour mode silencieux
     }
 
@@ -845,7 +845,7 @@
     if(!name) return;
     
     const now = new Date();
-    const dateKey = new Date().toLocaleDateString('fr-FR');
+    const dateKey = now.toLocaleDateString('fr-FR');
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
     currentPointage = entry; // Mise à jour de l'état global pour updateClock
@@ -989,7 +989,7 @@
     if(!name) return;
     
     const now = new Date();
-    const dateKey = new Date().toLocaleDateString('fr-FR');
+    const dateKey = now.toLocaleDateString('fr-FR');
     const pointages = await getPointages();
     const entry = pointages.find(l => l.date === dateKey && l.name === name);
     currentPointage = entry;
@@ -1001,7 +1001,6 @@
 
     const managerPerformanceStatsDiv = document.getElementById('managerPerformanceStats');
 
-    const now = new Date();
     const targetMonth = now.getMonth();
     const targetYear = now.getFullYear();
 
