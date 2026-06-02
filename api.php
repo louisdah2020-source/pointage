@@ -6,6 +6,10 @@ $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($action) {
+    case 'test':
+        echo json_encode(['success' => true, 'message' => 'Connexion API OK', 'db_status' => 'Connectée']);
+        break;
+
     case 'getAgents':
         $stmt = $pdo->query("SELECT * FROM agents ORDER BY name");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
@@ -159,6 +163,25 @@ switch ($action) {
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$row['agent_name'], $row['date'], $row['dons'], $row['refus_arg'], $row['indecis'], $row['del']]);
         }
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'getAdjustments':
+        $stmt = $pdo->prepare("SELECT * FROM primes_retenues WHERE mois = ? AND annee = ?");
+        $stmt->execute([$_GET['mois'], $_GET['annee']]);
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    case 'saveAdjustment':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $sql = "INSERT INTO primes_retenues (agent_name, mois, annee, montant_prime, montant_retenue) 
+                VALUES (?,?,?,?,?) 
+                ON DUPLICATE KEY UPDATE montant_prime=VALUES(montant_prime), montant_retenue=VALUES(montant_retenue)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            $data['agent_name'], $data['mois'], $data['annee'], 
+            $data['montant_prime'] ?? 0, $data['montant_retenue'] ?? 0
+        ]);
         echo json_encode(['success' => true]);
         break;
 
