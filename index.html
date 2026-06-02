@@ -58,7 +58,15 @@
     .admin-header { background: var(--primary-color); color: white; border-radius: 25px 25px 0 0; padding: 15px; }
     .hidden { display: none !important; }
     .status-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 20px; }
-    .nav-pills .nav-link { color: #ffffff90; border-radius: 12px; }
+    .nav-pills .nav-link { 
+      color: #ffffff90; 
+      border-radius: 12px; 
+      padding: 15px 10px; 
+      font-size: 1.1rem; 
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+    .nav-pills .nav-link i { font-size: 1.3rem; margin-right: 8px; vertical-align: middle; }
     .nav-pills .nav-link.active { background-color: var(--primary-color); }
     .form-control, .form-select { border-radius: 15px; padding: 12px 20px; border: 2px solid #f1f2f6; background: #f8f9fa; }
     .form-control:focus { border-color: var(--primary-color); background: #fff; box-shadow: none; }
@@ -161,9 +169,8 @@
         <h6 class="fw-bold small text-primary mb-3 text-uppercase">Nouvelle Demande</h6>
         <div class="mb-2">
           <select id="leaveType" class="form-select form-select-sm">
-            <option value="CONGE">Congé Annuel</option>
+            <option value="CONGE">Congé Sans Solde</option>
             <option value="PERMISSION">Permission Exceptionnelle</option>
-            <option value="MALADIE">Arrêt Maladie</option>
           </select>
         </div>
         <div class="row g-2 mb-2">
@@ -768,7 +775,6 @@
       else if (h >= 10.0833) status = "RETARD"; // 10.0833 correspond à 10h05
       
       entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
-      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
       const { error } = await _supabase.from('pointages').insert([entry]);
       if (error) return alert("Erreur lors de l'enregistrement : " + error.message);
       
@@ -785,7 +791,7 @@
           if (error) return alert("Erreur lors de la régularisation.");
           showFeedback(`Arrivée régularisée à ${timeStr}`, false, feedbackId);
           if (newStatus !== "PRESENT") envoyerAlerteEmail(name, timeStr, newStatus);
-          return loadAgentTodayStats();
+          if (userIsManager) return loadManagerTodayStats(); else return loadAgentTodayStats();
         }
         return alert("Arrivée déjà pointée.");
       }
