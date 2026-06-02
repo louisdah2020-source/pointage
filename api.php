@@ -7,13 +7,45 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($action) {
     case 'getAgents':
-        $stmt = $pdo->query("SELECT name FROM agents ORDER BY name");
-        echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_COLUMN)]);
+        $stmt = $pdo->query("SELECT * FROM agents ORDER BY name");
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    case 'addAgent':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $sql = "INSERT INTO agents (name, matricule, salaire_base) VALUES (?, ?, ?)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$data['name'], $data['matricule'], $data['salaire_base'] ?? 0]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'deleteAgent':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $sql = "DELETE FROM agents WHERE name = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$data['name']]);
+        echo json_encode(['success' => true]);
         break;
 
     case 'getManagers':
         $stmt = $pdo->query("SELECT name FROM managers ORDER BY name");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_COLUMN)]);
+        break;
+
+    case 'addManager':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $sql = "INSERT INTO managers (name) VALUES (?)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$data['name']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'deleteManager':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $sql = "DELETE FROM managers WHERE name = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$data['name']]);
+        echo json_encode(['success' => true]);
         break;
 
     case 'getPointages':

@@ -243,7 +243,7 @@
           <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-bar-chart"></i> Rapports</button>
           <button class="nav-link" onclick="switchTab('tab-conges', this)"><i class="bi bi-calendar-event"></i> Congés</button>
           <button class="nav-link" onclick="switchTab('tab-compta', this)"><i class="bi bi-cash-stack"></i> Paie</button>
-          <button class="nav-link" onclick="switchTab('tab-manager', this)"><i class="bi bi-person-badge"></i> Manager</button>
+          <button class="nav-link" onclick="switchTab('tab-managers', this)"><i class="bi bi-person-badge"></i> Managers</button>
         </nav>
       </div>
       <div class="card-body p-4">
@@ -380,6 +380,23 @@
           </div>
         </div>
 
+        <!-- Onglet Managers -->
+        <div id="tab-managers" class="hidden">
+          <h5>Ajouter un nouveau Manager</h5>
+          <div class="row g-2 mb-4">
+            <div class="col-md-9">
+              <input type="text" id="newManagerName" class="form-control" placeholder="NOM COMPLET DU MANAGER">
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-manager w-100" onclick="ajouterManager()">
+                <i class="bi bi-plus-lg me-2"></i>Ajouter
+              </button>
+            </div>
+          </div>
+          <hr>
+          <h5>Liste des Managers</h5>
+          <ul id="listManagers" class="list-group shadow-sm"></ul>
+        </div>
       </div>
     </div>
   </div>
@@ -694,14 +711,10 @@
     if (managerSelect) {
         const curMan = managerSelect.value;
         managerSelect.innerHTML = '<option value="" disabled selected>Choisir un profil...</option>';
-        managers.forEach(m => {
-            const option = document.createElement('option');
-            option.value = m; option.textContent = m;
-            managerSelect.appendChild(option);
-        });
+        managers.forEach(m => managerSelect.appendChild(new Option(m, m)));
         if (curMan && managers.includes(curMan)) managerSelect.value = curMan;
     }
-
+    
     // 3. Liste des managers (Vue Admin)
     const listManagers = document.getElementById('listManagers');
     if (listManagers) {
@@ -1289,7 +1302,7 @@
 
   function switchTab(id, el) {
     // Masquer tous les onglets possibles pour éviter les superpositions
-    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-compta', 'tab-manager'].forEach(tabId => {
+    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-compta', 'tab-managers'].forEach(tabId => {
       const tabEl = document.getElementById(tabId);
       if (tabEl) tabEl.classList.add('hidden');
     });
@@ -1317,6 +1330,8 @@
             yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
         }
         document.getElementById('payrollMonth').value = new Date().getMonth();
+    } else if (id === 'tab-managers') {
+        refreshAgentLists(); // Pour charger la liste des managers
     }
   }
 
@@ -1355,7 +1370,7 @@
                 status: 'ABSENCE CONSTATED',
                 total: '0'
             };
-            _supabase.from('pointages').insert([absence]);
+            fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(absence) });
         }
     });
   }
@@ -1520,7 +1535,8 @@
     if (n) {
       const agents = await getAgents();
       if (agents.includes(n)) return alert("Existe déjà");
-      await _supabase.from('agents').insert([{ name: n, matricule: m, salaire_base: s }]);
+      const res = await fetch(`${API_URL}?action=addAgent`, { method: 'POST', body: JSON.stringify({ name: n, matricule: m, salaire_base: s }) });
+      if (!(await res.json()).success) return alert("Erreur lors de l'ajout.");
       document.getElementById('newAgentName').value = "";
       document.getElementById('newAgentMatricule').value = "";
       document.getElementById('newAgentSalary').value = "";
@@ -1533,9 +1549,9 @@
     if (n) {
       const managers = await getManagers();
       if (managers.includes(n)) return alert("Existe déjà");
-      // On utilise une table 'managers' dédiée ou on peut adapter selon la structure
-      const { error } = await _supabase.from('managers').insert([{ name: n }]);
-      if (error) return alert("Erreur: " + error.message);
+      const res = await fetch(`${API_URL}?action=addManager`, { method: 'POST', body: JSON.stringify({ name: n }) });
+      const json = await res.json();
+      if (!json.success) return alert("Erreur: " + json.message);
       document.getElementById('newManagerName').value = "";
       refreshAgentLists();
     }
@@ -1543,7 +1559,9 @@
 
   async function supprimerManager(n) {
     if (confirm(`Supprimer le manager ${n} ?`)) {
-      await _supabase.from('managers').delete().eq('name', n);
+      const res = await fetch(`${API_URL}?action=deleteManager`, { method: 'POST', body: JSON.stringify({ name: n }) });
+      const json = await res.json();
+      if (!json.success) return alert("Erreur: " + json.message);
       refreshAgentLists();
     }
   }
@@ -1587,7 +1605,8 @@
 
   async function supprimerAgent(n) {
     if (confirm(`Supprimer l'agent ${n} ?`)) {
-      await _supabase.from('agents').delete().eq('name', n);
+      const res = await fetch(`${API_URL}?action=deleteAgent`, { method: 'POST', body: JSON.stringify({ name: n }) });
+      if (!(await res.json()).success) return alert("Erreur lors de la suppression.");
       loadAdminData();
     }
   }
@@ -1610,8 +1629,9 @@
     const monthStr = month.toString().padStart(2, '0');
     const prefix = `${year}-${monthStr}`;
 
-    // 1. Charger tous les agents pour avoir matricule et salaire de base
-    const { data: agents, error: errA } = await _supabase.from('agents').select('*').order('name');
+    const resA = await fetch(`${API_URL}?action=getAgents`);
+    const jsonA = await resA.json();
+    const agents = jsonA.success ? jsonA.data : [];
     if (errA) return alert("Erreur agents: " + errA.message);
 
     // 2. Charger tous les pointages du mois sélectionné
