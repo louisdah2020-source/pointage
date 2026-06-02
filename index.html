@@ -8,6 +8,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -501,27 +502,7 @@
     const ctx = document.getElementById('agentMonthlyChart').getContext('2d');
     if (agentChart) agentChart.destroy();
 
-    agentChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Heures effectuées',
-          data: values,
-          borderColor: '#2e3192',
-          backgroundColor: 'rgba(46, 49, 146, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
-      }
-    });
+    agentChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Heures effectuées', data: values, borderColor: '#2e3192', backgroundColor: 'rgba(46, 49, 146, 0.1)', fill: true, tension: 0.3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
   }
 
   // --- CONFIGURATION SUPABASE ---
@@ -542,25 +523,14 @@
   
   async function getManagers() {
     const { data, error } = await _supabase.from('managers').select('name').order('name');
-    if (error) {
-        console.log("Note: Table 'managers' peut-être absente. Utilisation d'une liste vide.");
-        return [];
-    }
+    if (error) console.error(error);
     return data ? data.map(m => m.name) : [];
   }
 
   async function getPointages() {
-    try {
-      const { data, error } = await _supabase.from('pointages').select('*').order('date', { ascending: false });
-      if (error) throw error;
-      return data.map(p => ({
-        ...p,
-        isoDate: p.iso_date
-      }));
-    } catch (e) {
-      console.error("Erreur lors de la lecture des pointages depuis Supabase:", e);
-      return [];
-    }
+    const { data, error } = await _supabase.from('pointages').select('*').order('iso_date', { ascending: false }).order('id', { ascending: false });
+    if (error) console.error(error);
+    return data ? data.map(p => ({ ...p, isoDate: p.iso_date })) : [];
   }
   
   function getDeviceLogs() {
@@ -606,28 +576,28 @@
   }
 
   async function accuserReceptionConge(id, statut) {
-    const res = await fetch(`${API_URL}?action=ackLeave&id=${id}`);
-    const json = await res.json();
-    if (!json.success) {
-      console.error("Erreur accusé réception:", error);
-      alert("Erreur lors de l'accusé de réception.");
-    } else {
+    try {
+      const { error } = await _supabase.from('demandes_conges').update({ acknowledged_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
       loadAgentTodayStats();
       showFeedback("Réception accusée avec succès.");
+    } catch (e) {
+      alert("Erreur lors de l'accusé de réception : " + e.message);
     }
   }
 
   // Horloge et Contraintes d'affichage
   function updateClock() {
     const now = new Date();
+    const dateKey = now.toLocaleDateString('fr-FR');
     const currentHours = now.getHours();
     const currentMinutes = now.getMinutes();
+
     document.getElementById('liveClock').innerText = now.toLocaleTimeString('fr-FR');
     document.getElementById('liveDate').innerText = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
     
     const day = now.getDay();
     const h = now.getHours() + (now.getMinutes() / 60);
-    const dateKey = now.toLocaleDateString('fr-FR');
     const isWeekend = (day === 0); // Dimanche uniquement
     
     document.getElementById('weekendMsg').classList.toggle('hidden', !isWeekend);
@@ -658,10 +628,11 @@
 
     // --- ENVOI AUTOMATIQUE DU RÉCAPITULATIF (ADMIN) ---
     // Se déclenche à 19h45 si l'admin est connecté
+    const todayStr = now.toLocaleDateString('fr-FR');
     const lastSent = localStorage.getItem('lastSummarySentDate');
     
-    if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== dateKey) {
-      localStorage.setItem('lastSummarySentDate', dateKey);
+    if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== todayStr) {
+      localStorage.setItem('lastSummarySentDate', todayStr);
       envoyerRecapitulatifJournalier(true); // true pour mode silencieux
     }
 
@@ -797,12 +768,9 @@
       else if (h >= 10.0833) status = "RETARD"; // 10.0833 correspond à 10h05
       
       entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
-      logs.push(entry); // Ajout de la nouvelle entrée
-      const res = await fetch(`${API_URL}?action=savePointage`, { 
-        method: 'POST', 
-        body: JSON.stringify({ ...entry, pause: '', retour: '', depart: '', status: entry.status, total: 0 }) 
-      });
-      if (!(await res.json()).success) return alert("Erreur lors de l'enregistrement.");
+      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
+      const { error } = await _supabase.from('pointages').insert([entry]);
+      if (error) return alert("Erreur lors de l'enregistrement : " + error.message);
       
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
@@ -813,8 +781,8 @@
           if (h > 11.5) newStatus = "ABSENCE (TARDIF)";
           else if (h > 10.25) newStatus = "RETARD";
           
-          const resReg = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify({...entry, arrivee: timeStr, status: newStatus}) });
-          if (!(await resReg.json()).success) return alert("Erreur lors de la régularisation.");
+          const { error } = await _supabase.from('pointages').update({ arrivee: timeStr, status: newStatus }).eq('id', entry.id);
+          if (error) return alert("Erreur lors de la régularisation.");
           showFeedback(`Arrivée régularisée à ${timeStr}`, false, feedbackId);
           if (newStatus !== "PRESENT") envoyerAlerteEmail(name, timeStr, newStatus);
           return loadAgentTodayStats();
@@ -826,8 +794,8 @@
         entry[type.toLowerCase()] = timeStr;
         updateData.total = calculerHeures(entry);
       }
-      const resUpd = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify({...entry, ...updateData}) });
-      if (!(await resUpd.json()).success) return alert("Erreur serveur lors de la mise à jour.");
+      const { error } = await _supabase.from('pointages').update(updateData).eq('id', entry.id);
+      if (error) return alert("Erreur serveur lors de la mise à jour.");
     }
 
     // Enregistrer l'action pour cet appareil
@@ -856,9 +824,9 @@
     
     const performanceStatsDiv = document.getElementById('agentPerformanceStats');
 
-    const resLeaves = await fetch(`${API_URL}?action=getLeaves&name=${encodeURIComponent(name)}`);
-    const jsonLeaves = await resLeaves.json();
-    const leaves = jsonLeaves.success ? jsonLeaves.data.slice(0, 3) : [];
+    const { data: leaves, error: errL } = await _supabase.from('demandes_conges').select('*').eq('agent_name', name).order('created_at', { ascending: false }).limit(3);
+    if (errL) console.error(errL);
+
     const leavesStatusDiv = document.getElementById('agentLeavesStatus');
     if (leavesStatusDiv) {
         // Notification sonore et visuelle pour les nouveaux statuts
@@ -898,9 +866,10 @@
         }
     }
 
-    const resPerf = await fetch(`${API_URL}?action=getPerformance&name=${encodeURIComponent(name)}&date=${now.toISOString().split('T')[0]}`);
-    const jsonPerf = await resPerf.json();
-    const performanceStats = jsonPerf.success ? jsonPerf.data : null;
+    const { data: performanceStats, error: perfError } = await _supabase.from('agent_performance_stats')
+        .select('*').eq('agent_name', name).eq('date', now.toISOString().split('T')[0]).maybeSingle();
+
+    if (perfError) console.error(perfError);
 
     if (performanceStats) {
         performanceStatsDiv.innerHTML = `
@@ -917,10 +886,9 @@
         performanceStatsDiv.innerHTML = `<div class="alert alert-light small text-muted">Aucune statistique de performance pour aujourd'hui.</div>`;
     }
     // Gestion du cumul mensuel (toujours visible pour le mois en cours)
-    const now = new Date();
     monthlyContainer.innerHTML = '';
 
-    const targetMonth = now.getMonth(); // 0-11
+    const targetMonth = now.getMonth();
     const targetYear = now.getFullYear();
 
     const monthlyEntries = pointages.filter(p => {
@@ -1000,7 +968,6 @@
     document.getElementById('managerTodaySection').classList.remove('hidden');
 
     const managerPerformanceStatsDiv = document.getElementById('managerPerformanceStats');
-
     const targetMonth = now.getMonth();
     const targetYear = now.getFullYear();
 
@@ -1057,9 +1024,10 @@
     }).join('');
     document.getElementById('teamStatusList').innerHTML = teamHtml;
 
-    const resMPerf = await fetch(`${API_URL}?action=getPerformance&name=${encodeURIComponent(name)}&date=${now.toISOString().split('T')[0]}`);
-    const jsonMPerf = await resMPerf.json();
-    const managerPerfStats = jsonMPerf.success ? jsonMPerf.data : null;
+    const { data: managerPerfStats, error: mPerfError } = await _supabase.from('agent_performance_stats')
+        .select('*').eq('agent_name', name).eq('date', now.toISOString().split('T')[0]).maybeSingle();
+
+    if (mPerfError) console.error(mPerfError);
 
     if (managerPerfStats) {
         managerPerformanceStatsDiv.innerHTML = `
@@ -1207,28 +1175,25 @@
       statut: 'EN ATTENTE'
     };
 
-    const res = await fetch(`${API_URL}?action=submitLeave`, { method: 'POST', body: JSON.stringify(payload) });
-    const json = await res.json();
+    try {
+      const { error } = await _supabase.from('demandes_conges').insert([payload]);
+      if (error) throw error;
 
-    if (!json.success) {
-      alert("Erreur lors de l'envoi");
-    } else {
       showFeedback("Votre demande a été envoyée avec succès !");
       document.getElementById('leaveStart').value = "";
       document.getElementById('leaveEnd').value = "";
       document.getElementById('leaveReason').value = "";
       document.getElementById('agentRequestSection').classList.add('hidden');
-      
-      // Notification aux RH
       envoyerAlerteEmail(name, new Date().toLocaleTimeString(), `DEMANDE DE ${type}`, `Période: du ${start} au ${end}. Motif: ${reason}`);
-      loadAgentTodayStats(); // Rafraîchir l'affichage pour voir la nouvelle demande
+      loadAgentTodayStats();
+    } catch (e) {
+      alert("Erreur lors de l'envoi : " + e.message);
     }
   }
 
   async function loadPendingLeaves() {
-    const res = await fetch(`${API_URL}?action=getLeaves`);
-    const json = await res.json();
-    const data = json.success ? json.data : [];
+    const { data, error } = await _supabase.from('demandes_conges').select('*').order('created_at', { ascending: false });
+    if (error) return console.error(error);
 
     const container = document.getElementById('listLeaves');
     if (!data || data.length === 0) {
@@ -1271,8 +1236,9 @@
 
   async function updateLeaveStatus(id, newStatus) {
     if (!confirm(`Voulez-vous vraiment ${newStatus === 'VALIDE' ? 'valider' : 'refuser'} cette demande ?`)) return;
-    const res = await fetch(`${API_URL}?action=updateLeaveStatus`, { method: 'POST', body: JSON.stringify({id, statut: newStatus}) });
-    if (!(await res.json()).success) alert("Erreur lors de la mise à jour.");
+    
+    const { error } = await _supabase.from('demandes_conges').update({ statut: newStatus }).eq('id', id);
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
     else {
       showFeedback(`Demande mise à jour avec succès.`);
       loadPendingLeaves();
@@ -1371,7 +1337,7 @@
                 status: 'ABSENCE CONSTATED',
                 total: '0'
             };
-            fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(absence) });
+            _supabase.from('pointages').insert([absence]);
         }
     });
   }
@@ -1483,8 +1449,8 @@
     updateData.total = calculerHeures(updateData);
     updateData.id = id;
 
-    const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(updateData) });
-    if (!(await res.json()).success) alert("Erreur lors de la mise à jour.");
+    const { error } = await _supabase.from('pointages').update(updateData).eq('id', id);
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
     else {
       bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
       loadReports();
@@ -1536,8 +1502,8 @@
     if (n) {
       const agents = await getAgents();
       if (agents.includes(n)) return alert("Existe déjà");
-      const res = await fetch(`${API_URL}?action=addAgent`, { method: 'POST', body: JSON.stringify({ name: n, matricule: m, salaire_base: s }) });
-      if (!(await res.json()).success) return alert("Erreur lors de l'ajout.");
+      const { error } = await _supabase.from('agents').insert([{ name: n, matricule: m, salaire_base: s }]);
+      if (error) return alert("Erreur lors de l'ajout : " + error.message);
       document.getElementById('newAgentName').value = "";
       document.getElementById('newAgentMatricule').value = "";
       document.getElementById('newAgentSalary').value = "";
@@ -1550,9 +1516,8 @@
     if (n) {
       const managers = await getManagers();
       if (managers.includes(n)) return alert("Existe déjà");
-      const res = await fetch(`${API_URL}?action=addManager`, { method: 'POST', body: JSON.stringify({ name: n }) });
-      const json = await res.json();
-      if (!json.success) return alert("Erreur: " + json.message);
+      const { error } = await _supabase.from('managers').insert([{ name: n }]);
+      if (error) return alert("Erreur: " + error.message);
       document.getElementById('newManagerName').value = "";
       refreshAgentLists();
     }
@@ -1560,9 +1525,8 @@
 
   async function supprimerManager(n) {
     if (confirm(`Supprimer le manager ${n} ?`)) {
-      const res = await fetch(`${API_URL}?action=deleteManager`, { method: 'POST', body: JSON.stringify({ name: n }) });
-      const json = await res.json();
-      if (!json.success) return alert("Erreur: " + json.message);
+      const { error } = await _supabase.from('managers').delete().eq('name', n);
+      if (error) return alert("Erreur: " + error.message);
       refreshAgentLists();
     }
   }
@@ -1587,11 +1551,10 @@
       pause: '', retour: '', depart: '', total: 0
     };
 
-    const res = await fetch(`${API_URL}?action=savePointage`, { method: 'POST', body: JSON.stringify(entry) });
-    const json = await res.json();
+    const { error } = await _supabase.from('pointages').insert([entry]);
 
-    if (!json.success) {
-      alert("Erreur lors de l'enregistrement.");
+    if (error) {
+      alert("Erreur lors de l'enregistrement : " + error.message);
     } else {
       showFeedback("Pointage manuel enregistré avec succès.");
       document.getElementById('manualMotif').value = "";
@@ -1602,8 +1565,8 @@
 
   async function supprimerAgent(n) {
     if (confirm(`Supprimer l'agent ${n} ?`)) {
-      const res = await fetch(`${API_URL}?action=deleteAgent`, { method: 'POST', body: JSON.stringify({ name: n }) });
-      if (!(await res.json()).success) return alert("Erreur lors de la suppression.");
+      const { error } = await _supabase.from('agents').delete().eq('name', n);
+      if (error) return alert("Erreur lors de la suppression : " + error.message);
       loadAdminData();
     }
   }
@@ -1626,17 +1589,11 @@
     const monthStr = month.toString().padStart(2, '0');
     const prefix = `${year}-${monthStr}`;
 
-    const resA = await fetch(`${API_URL}?action=getAgents`);
-    const jsonA = await resA.json();
-    const agents = jsonA.success ? jsonA.data : [];
+    const { data: agents } = await _supabase.from('agents').select('*').order('name');
 
-    const resL = await fetch(`${API_URL}?action=getPointages`);
-    const jsonL = await resL.json();
-    const logs = jsonL.success ? jsonL.data.filter(l => l.iso_date.startsWith(prefix)) : [];
+    const { data: logs } = await _supabase.from('pointages').select('*').like('iso_date', `${prefix}%`);
 
-    const resAdj = await fetch(`${API_URL}?action=getAdjustments&mois=${month}&annee=${year}`);
-    const jsonAdj = await resAdj.json();
-    const adjustments = jsonAdj.success ? jsonAdj.data : [];
+    const { data: adjustments } = await _supabase.from('primes_retenues').select('*').eq('mois', month).eq('annee', year);
     
     const adjMap = {};
     adjustments.forEach(adj => { adjMap[adj.agent_name] = adj; });
@@ -1702,18 +1659,23 @@
         const prime = parseFloat(row.querySelector('.payroll-prime').value) || 0;
         const retenue = parseFloat(row.querySelector('.payroll-retenue').value) || 0;
 
-        const res = await fetch(`${API_URL}?action=saveAdjustment`, {
-            method: 'POST',
-            body: JSON.stringify({
-                agent_name: agentName,
-                mois: month,
-                annee: year,
+        const { data: existing } = await _supabase.from('primes_retenues').select('id')
+            .eq('agent_name', agentName).eq('mois', month).eq('annee', year).maybeSingle();
+
+        if (existing) {
+            await _supabase.from('primes_retenues').update({ 
+                montant_prime: prime, 
+                montant_retenue: retenue 
+            }).eq('id', existing.id);
+        } else {
+            await _supabase.from('primes_retenues').insert([{ 
+                agent_name: agentName, 
+                mois: month, 
+                annee: year, 
                 montant_prime: prime,
                 montant_retenue: retenue
-            })
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message);
+            }]);
+        }
       }
       showFeedback("Toute la paie du mois a été enregistrée.");
       calculerPaie();
@@ -1945,11 +1907,11 @@
         }
 
         try {
-            const res = await fetch(`${API_URL}?action=upsertPerformance`, { method: 'POST', body: JSON.stringify(recordsToInsert) });
-            const json = await res.json();
+            // Utilisation directe de Supabase pour l'importation (upsert gère l'ajout ou la mise à jour)
+            const { error } = await _supabase.from('agent_performance_stats').upsert(recordsToInsert, { onConflict: 'agent_name,date' });
 
-            if (!json.success) {
-                showFeedback("Erreur lors de l'importation des données", true, 'performanceUploadFeedback');
+            if (error) {
+                showFeedback("Erreur lors de l'importation des données : " + error.message, true, 'performanceUploadFeedback');
             } else {
                 showFeedback(`Importation réussie de ${recordsToInsert.length} enregistrements.`, false, 'performanceUploadFeedback');
                 // Rafraîchir les statistiques du manager et de l'agent si nécessaire
