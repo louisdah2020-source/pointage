@@ -13,18 +13,42 @@ switch ($action) {
 
     case 'addAgent':
         $data = json_decode(file_get_contents('php://input'), true);
-        $sql = "INSERT INTO agents (name, matricule, salaire_base) VALUES (?, ?, ?)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$data['name'], $data['matricule'], $data['salaire_base'] ?? 0]);
-        echo json_encode(['success' => true]);
+        if (!isset($data['name']) || empty($data['name'])) {
+            echo json_encode(['success' => false, 'message' => 'Nom de l\'agent manquant.']);
+            break;
+        }
+        try {
+            $sql = "INSERT INTO agents (name, matricule, salaire_base) VALUES (?, ?, ?)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$data['name'], $data['matricule'] ?? null, $data['salaire_base'] ?? 0]);
+            echo json_encode(['success' => true, 'message' => 'Agent ajouté avec succès.']);
+        } catch (PDOException $e) {
+            if ($e->getCode() == 23000) { // MySQL integrity constraint violation (e.g., duplicate entry for unique key)
+                echo json_encode(['success' => false, 'message' => 'Cet agent existe déjà.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Erreur lors de l\'ajout de l\'agent: ' . $e->getMessage()]);
+            }
+        }
         break;
 
     case 'deleteAgent':
         $data = json_decode(file_get_contents('php://input'), true);
-        $sql = "DELETE FROM agents WHERE name = ?";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$data['name']]);
-        echo json_encode(['success' => true]);
+        if (!isset($data['name']) || empty($data['name'])) {
+            echo json_encode(['success' => false, 'message' => 'Nom de l\'agent manquant.']);
+            break;
+        }
+        try {
+            $sql = "DELETE FROM agents WHERE name = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$data['name']]);
+            if ($stmt->rowCount() > 0) {
+                echo json_encode(['success' => true, 'message' => 'Agent supprimé avec succès.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Agent non trouvé.']);
+            }
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'message' => 'Erreur lors de la suppression de l\'agent: ' . $e->getMessage()]);
+        }
         break;
 
     case 'getManagers':
@@ -34,18 +58,42 @@ switch ($action) {
 
     case 'addManager':
         $data = json_decode(file_get_contents('php://input'), true);
-        $sql = "INSERT INTO managers (name) VALUES (?)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$data['name']]);
-        echo json_encode(['success' => true]);
+        if (!isset($data['name']) || empty($data['name'])) {
+            echo json_encode(['success' => false, 'message' => 'Nom du manager manquant.']);
+            break;
+        }
+        try {
+            $sql = "INSERT INTO managers (name) VALUES (?)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$data['name']]);
+            echo json_encode(['success' => true, 'message' => 'Manager ajouté avec succès.']);
+        } catch (PDOException $e) {
+            if ($e->getCode() == 23000) { // MySQL integrity constraint violation (e.g., duplicate entry for unique key)
+                echo json_encode(['success' => false, 'message' => 'Ce manager existe déjà.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Erreur lors de l\'ajout du manager: ' . $e->getMessage()]);
+            }
+        }
         break;
 
     case 'deleteManager':
         $data = json_decode(file_get_contents('php://input'), true);
-        $sql = "DELETE FROM managers WHERE name = ?";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$data['name']]);
-        echo json_encode(['success' => true]);
+        if (!isset($data['name']) || empty($data['name'])) {
+            echo json_encode(['success' => false, 'message' => 'Nom du manager manquant.']);
+            break;
+        }
+        try {
+            $sql = "DELETE FROM managers WHERE name = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$data['name']]);
+            if ($stmt->rowCount() > 0) {
+                echo json_encode(['success' => true, 'message' => 'Manager supprimé avec succès.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Manager non trouvé.']);
+            }
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'message' => 'Erreur lors de la suppression du manager: ' . $e->getMessage()]);
+        }
         break;
 
     case 'getPointages':
