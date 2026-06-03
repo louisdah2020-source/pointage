@@ -2049,14 +2049,20 @@
   async function sauvegarderModificationAgent() {
     const id = document.getElementById('editAgentId').value;
     const name = document.getElementById('editAgentName').value.trim().toUpperCase();
-    const matricule = document.getElementById('editAgentMatricule').value.trim();
+    const matriculeInput = document.getElementById('editAgentMatricule').value.trim();
     const salary = document.getElementById('editAgentSalary').value;
     
-    const { error } = await _supabase.from('agents').update({
+    const updateData = {
       name: name,
-      matricule: matricule,
       salaire_base: salary
-    }).eq('id', id);
+    };
+
+    // N'inclure le matricule dans la mise à jour que s'il n'est pas vide
+    if (matriculeInput !== '') {
+      updateData.matricule = matriculeInput;
+    }
+    
+    const { error } = await _supabase.from('agents').update(updateData).eq('id', id);
     
     if (error) alert("Erreur lors de la mise à jour : " + error.message);
     else {
