@@ -26,9 +26,11 @@ switch ($action) {
             break;
         }
         try {
+            // Génération automatique du matricule s'il n'est pas fourni (fallback pour MySQL)
+            $matricule = $data['matricule'] ?? ('MAT-' . date('Ymd') . rand(100, 999));
             $sql = "INSERT INTO agents (name, matricule, salaire_base) VALUES (?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$data['name'], $data['matricule'] ?? null, $data['salaire_base'] ?? 0]);
+            $stmt->execute([$data['name'], $matricule, $data['salaire_base'] ?? 0]);
             echo json_encode(['success' => true, 'message' => 'Agent ajouté avec succès.']);
         } catch (PDOException $e) {
             if ($e->getCode() == 23000) { // MySQL integrity constraint violation (e.g., duplicate entry for unique key)

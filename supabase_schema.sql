@@ -1,9 +1,12 @@
+-- Création de la séquence pour la génération automatique du matricule
+CREATE SEQUENCE IF NOT EXISTS agent_matricule_seq START 1001;
+
 -- 1. Table des Agents
 CREATE TABLE IF NOT EXISTS public.agents (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at timestamp with time zone DEFAULT now(),
     name text UNIQUE NOT NULL,
-    matricule text,
+    matricule text DEFAULT 'MAT-' || nextval('agent_matricule_seq')::text,
     salaire_base numeric DEFAULT 0
 );
 

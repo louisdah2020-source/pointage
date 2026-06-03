@@ -113,7 +113,7 @@
   <div class="d-flex justify-content-between align-items-center mb-5">
     <div class="text-center w-100">
         <div class="bg-white d-inline-block p-3 rounded-circle shadow-sm mb-3">
-            <img src="logo.jpg" alt="Logo" class="img-fluid rounded-circle logo-img">
+            <img src="logo.jpg" id="appLogo" alt="Logo" class="img-fluid rounded-circle logo-img">
         </div>
         <h2 class="fw-bold text-dark">MON POINTAGE</h2>
     </div>
@@ -261,9 +261,8 @@
         <div id="tab-agents">
           <h5>Ajouter un nouvel agent</h5>
           <div class="row g-2 mb-4">
-            <div class="col-md-5"><input type="text" id="newAgentName" class="form-control" placeholder="NOM COMPLET"></div>
-            <div class="col-md-3"><input type="text" id="newAgentMatricule" class="form-control" placeholder="MATRICULE"></div>
-            <div class="col-md-3"><input type="number" id="newAgentSalary" class="form-control" placeholder="SALAIRE BASE"></div>
+            <div class="col-md-7"><input type="text" id="newAgentName" class="form-control" placeholder="NOM COMPLET"></div>
+            <div class="col-md-4"><input type="number" id="newAgentSalary" class="form-control" placeholder="SALAIRE BASE"></div>
             <div class="col-md-1"><button class="btn btn-primary w-100" onclick="ajouterAgent()"><i class="bi bi-plus-lg"></i></button></div>
           </div>
           <hr>
@@ -464,7 +463,39 @@
       <div class="modal-body p-5" id="payslipContent"></div>
       <div class="modal-footer d-print-none border-0 pt-0">
         <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Fermer</button>
+        <button type="button" class="btn btn-danger px-4" onclick="exporterBulletinIndividuelPDF()"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</button>
         <button type="button" class="btn btn-primary px-4" onclick="window.print()"><i class="bi bi-printer me-2"></i>Imprimer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Modification d'Agent -->
+<div class="modal fade" id="editAgentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header bg-primary text-white rounded-top-4">
+        <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Modifier Agent</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <input type="hidden" id="editAgentId">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Nom Complet</label>
+          <input type="text" id="editAgentName" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Matricule</label>
+          <input type="text" id="editAgentMatricule" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Salaire de Base</label>
+          <input type="number" id="editAgentSalary" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer border-0 p-4 pt-0">
+        <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary rounded-3 px-4" onclick="sauvegarderModificationAgent()">Enregistrer</button>
       </div>
     </div>
   </div>
@@ -474,6 +505,7 @@
   // --- CONFIGURATION & DONNEES ---
   let userIsAdmin = false;
   let userIsManager = false;
+  let currentPayslipData = null; // Stockage pour l'export PDF individuel
   const ADMIN_PWD = "ADMIN123";
   const MANAGER_PWD = "MANAGER123";
   let currentPointage = null; // État global pour synchroniser l'UI avec la base de données
@@ -706,12 +738,21 @@
     // 2. Liste du personnel (Vue Admin)
     const listPersonnel = document.getElementById('listPersonnel');
     if (listPersonnel) {
-      listPersonnel.innerHTML = agents.map(a => `
+      const { data: agentsData } = await _supabase.from('agents').select('*').order('name');
+      listPersonnel.innerHTML = (agentsData || []).map(a => `
         <li class="list-group-item d-flex justify-content-between align-items-center border-0 mb-2 bg-light rounded-3">
-          <span class="fw-bold text-dark">${a}</span>
-          <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a}')">
-            <i class="bi bi-trash"></i>
-          </button>
+          <div>
+            <span class="fw-bold text-dark">${a.name}</span>
+            <br><small class="text-muted">${a.matricule || 'Sans matricule'} - ${a.salaire_base || 0} CFA</small>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-sm rounded-pill" onclick="ouvrirEditeurAgent('${a.id}')" title="Modifier">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerAgent('${a.name}')" title="Supprimer">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </li>
       `).join('');
     }
@@ -1502,16 +1543,14 @@
 
   async function ajouterAgent() {
     const n = document.getElementById('newAgentName').value.trim().toUpperCase();
-    const m = document.getElementById('newAgentMatricule').value.trim();
     const s = document.getElementById('newAgentSalary').value;
     
     if (n) {
       const agents = await getAgents();
       if (agents.includes(n)) return alert("Existe déjà");
-      const { error } = await _supabase.from('agents').insert([{ name: n, matricule: m, salaire_base: s }]);
+      const { error } = await _supabase.from('agents').insert([{ name: n, salaire_base: s }]);
       if (error) return alert("Erreur lors de l'ajout : " + error.message);
       document.getElementById('newAgentName').value = "";
-      document.getElementById('newAgentMatricule').value = "";
       document.getElementById('newAgentSalary').value = "";
       loadAdminData();
     }
@@ -1700,6 +1739,11 @@
     const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
     const year = document.getElementById('payrollYear').value;
     
+    const logoImg = document.getElementById('appLogo');
+    if (logoImg) {
+        doc.addImage(logoImg, 'JPEG', 15, 10, 25, 25);
+    }
+
     // En-tête du document
     doc.setFontSize(22);
     doc.setTextColor(46, 49, 146);
@@ -1788,6 +1832,7 @@
   }
 
   function visualiserFichePaie(name, matricule, base, hours, net, prime, retenue) {
+    currentPayslipData = { name, matricule, base, hours, net, prime, retenue };
     const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
     const year = document.getElementById('payrollYear').value;
     const proratedBase = (base / 173.33) * hours;
@@ -1844,6 +1889,58 @@
     
     document.getElementById('payslipContent').innerHTML = content;
     new bootstrap.Modal(document.getElementById('payslipModal')).show();
+  }
+
+  function exporterBulletinIndividuelPDF() {
+    if (!currentPayslipData) return;
+    const { name, matricule, base, hours, net, prime, retenue } = currentPayslipData;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
+    const year = document.getElementById('payrollYear').value;
+    const proratedBase = (base / 173.33) * hours;
+
+    const logoImg = document.getElementById('appLogo');
+    if (logoImg) {
+        doc.addImage(logoImg, 'JPEG', 15, 10, 25, 25);
+    }
+
+    doc.setFontSize(20);
+    doc.setTextColor(46, 49, 146);
+    doc.text("MEDIA YAB sarl", 105, 20, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(50);
+    doc.text("BULLETIN DE PAIE", 105, 30, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${monthText.toUpperCase()} ${year}`, 105, 36, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setTextColor(0);
+    doc.text(`Salarié : ${name}`, 20, 50);
+    doc.text(`Matricule : ${matricule || 'N/A'}`, 20, 56);
+
+    doc.autoTable({
+      startY: 65,
+      head: [['DÉSIGNATION', 'BASE / QTE', 'TAUX UNIT.', 'MONTANT']],
+      body: [
+        ['Salaire de Base', '173.33 h', (base/173.33).toFixed(2), base.toLocaleString() + " CFA"],
+        ['Heures travaillées', hours.toFixed(2) + ' h', (base/173.33).toFixed(2), proratedBase.toLocaleString(undefined, {maximumFractionDigits: 0}) + " CFA"],
+        ['Primes / Bonus', '-', '-', (prime || 0).toLocaleString() + " CFA"],
+        ['Retenues / Avances', '-', '-', '-' + (retenue || 0).toLocaleString() + " CFA"]
+      ],
+      foot: [['NET À PAYER', '', '', net.toLocaleString(undefined, {maximumFractionDigits: 0}) + " CFA"]],
+      theme: 'grid',
+      headStyles: { fillColor: [46, 49, 146] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [46, 49, 146], fontStyle: 'bold' }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 30;
+    doc.text("Signature Salarié", 40, finalY);
+    doc.text("Signature Employeur", 140, finalY);
+    
+    doc.save(`Bulletin_Paie_${name}_${monthText}_${year}.pdf`);
   }
 
   setInterval(updateClock, 1000);
@@ -1935,6 +2032,38 @@
     };
 
     reader.readAsText(file);
+  }
+
+  async function ouvrirEditeurAgent(id) {
+    const { data, error } = await _supabase.from('agents').select('*').eq('id', id).single();
+    if (error) return alert("Erreur lors de la récupération : " + error.message);
+    
+    document.getElementById('editAgentId').value = data.id;
+    document.getElementById('editAgentName').value = data.name;
+    document.getElementById('editAgentMatricule').value = data.matricule || '';
+    document.getElementById('editAgentSalary').value = data.salaire_base || 0;
+    
+    new bootstrap.Modal(document.getElementById('editAgentModal')).show();
+  }
+
+  async function sauvegarderModificationAgent() {
+    const id = document.getElementById('editAgentId').value;
+    const name = document.getElementById('editAgentName').value.trim().toUpperCase();
+    const matricule = document.getElementById('editAgentMatricule').value.trim();
+    const salary = document.getElementById('editAgentSalary').value;
+    
+    const { error } = await _supabase.from('agents').update({
+      name: name,
+      matricule: matricule,
+      salaire_base: salary
+    }).eq('id', id);
+    
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
+    else {
+      bootstrap.Modal.getInstance(document.getElementById('editAgentModal')).hide();
+      refreshAgentLists();
+      showFeedback("Agent mis à jour avec succès.");
+    }
   }
 </script>
 </body>
