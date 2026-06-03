@@ -312,6 +312,33 @@
             <button class="btn btn-primary" onclick="saveLogRetention()">Enregistrer</button>
           </div>
           <small class="text-muted">Les logs de sécurité (actions par appareil) seront purgés après cette période.</small>
+
+          <hr class="my-4">
+          <h5>Configuration du Pop-up Informatif</h5>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Titre du Pop-up</label>
+            <input type="text" id="adminPopupTitle" class="form-control" placeholder="Ex: Informations Importantes">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Contenu texte</label>
+            <textarea id="adminPopupContent" class="form-control" rows="3" placeholder="Message à afficher..."></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Image de l'affiche (Charger un fichier)</label>
+            <input type="file" id="adminPopupFile" class="form-control" accept="image/*">
+            <small class="text-muted">L'image sera stockée directement sur votre serveur Supabase.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">URL de l'image (optionnel)</label>
+            <input type="text" id="adminPopupImageUrl" class="form-control" placeholder="https://exemple.com/image.jpg">
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="adminPopupActive">
+            <label class="form-check-label fw-bold" for="adminPopupActive">Activer le Pop-up au lancement</label>
+          </div>
+          <button class="btn btn-primary w-100" onclick="sauvegarderConfigPopup()">
+            <i class="bi bi-save me-2"></i>Enregistrer l'annonce
+          </button>
         </div>
 
         <!-- Onglet Rapports -->
@@ -503,6 +530,22 @@
       <div class="modal-footer border-0 p-4 pt-0">
         <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Annuler</button>
         <button type="button" class="btn btn-primary rounded-3 px-4" onclick="sauvegarderModificationAgent()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal d'Informations au Lancement -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header bg-primary text-white rounded-top-4">
+        <h5 class="modal-title" id="infoModalLabel"><i class="bi bi-info-circle me-2"></i>Informations Importantes</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4" id="infoModalBody"></div>
+      <div class="modal-footer border-0 p-4 pt-0">
+        <button type="button" class="btn btn-primary rounded-3 px-4" data-bs-dismiss="modal">Compris !</button>
       </div>
     </div>
   </div>
@@ -1318,6 +1361,7 @@
     loadReports();
     detecterAbsencesAutomatiques();
     await refreshAgentLists(); 
+    loadPopupConfig(true); // Charger les données dans le formulaire admin
     document.getElementById('logRetentionDays').value = DEVICE_LOG_RETENTION_DAYS; // Afficher la valeur actuelle
   }
 
@@ -1960,6 +2004,84 @@
   
   // Initialisation des vues
   updateClock();
+
+  // Charger et afficher la configuration du pop-up
+  async function loadPopupConfig(isAdminForm = false) {
+    const { data, error } = await _supabase.from('popup_config').select('*').eq('id', 1).maybeSingle();
+    if (error) return console.error("Erreur popup:", error);
+    if (!data) return;
+
+    if (isAdminForm) {
+        document.getElementById('adminPopupTitle').value = data.title;
+        document.getElementById('adminPopupContent').value = data.content;
+        document.getElementById('adminPopupImageUrl').value = data.image_url || '';
+        document.getElementById('adminPopupActive').checked = data.is_active;
+        return;
+    }
+
+    if (data.is_active) {
+        document.getElementById('infoModalLabel').innerHTML = `<i class="bi bi-info-circle me-2"></i>${data.title}`;
+        let html = '';
+        if (data.image_url) {
+            html += `<img src="${data.image_url}" class="img-fluid rounded-4 mb-3 shadow-sm w-100" style="max-height:300px; object-fit:cover;" alt="Annonce">`;
+        }
+        if (data.content) {
+            html += `<div style="white-space: pre-wrap;" class="text-secondary">${data.content}</div>`;
+        }
+        document.getElementById('infoModalBody').innerHTML = html;
+        
+        new bootstrap.Modal(document.getElementById('infoModal')).show();
+    }
+  }
+
+  async function sauvegarderConfigPopup() {
+    const title = document.getElementById('adminPopupTitle').value.trim();
+    const content = document.getElementById('adminPopupContent').value.trim();
+    const imageUrlInput = document.getElementById('adminPopupImageUrl').value.trim();
+    const imageFile = document.getElementById('adminPopupFile').files[0];
+    const isActive = document.getElementById('adminPopupActive').checked;
+
+    let finalImageUrl = imageUrlInput;
+
+    // Si un fichier est sélectionné, on le téléverse d'abord
+    if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`; // Nom unique basé sur le timestamp
+        const filePath = `affiches/${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await _supabase.storage
+            .from('annonces')
+            .upload(filePath, imageFile);
+
+        if (uploadError) {
+            alert("Erreur lors du chargement de l'image : " + uploadError.message);
+            return;
+        }
+        
+        // Récupération de l'URL publique de l'image chargée
+        const { data } = _supabase.storage.from('annonces').getPublicUrl(filePath);
+        finalImageUrl = data.publicUrl;
+    }
+
+    const { error } = await _supabase.from('popup_config').upsert({
+        id: 1,
+        title: title || 'Informations Importantes',
+        content: content,
+        image_url: finalImageUrl,
+        is_active: isActive,
+        updated_at: new Date().toISOString()
+    });
+
+    if (error) alert("Erreur lors de la sauvegarde : " + error.message);
+    else {
+        showFeedback("Annonce mise à jour avec succès.");
+        document.getElementById('adminPopupFile').value = ''; // Réinitialiser le champ fichier
+        if (imageFile) document.getElementById('adminPopupImageUrl').value = finalImageUrl; // Mettre à jour le champ URL
+    }
+  }
+
+  // Au lancement de l'application
+  document.addEventListener('DOMContentLoaded', () => loadPopupConfig(false));
 
   // --- Nouvelle fonction pour l'importation des statistiques de performance ---
   async function uploadPerformanceStats() {
