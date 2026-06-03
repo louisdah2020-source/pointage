@@ -23,7 +23,7 @@
       --bg-app: #f0f2f5;
       --manager-color: #6c5ce7;
     }
-    body { 
+    body {
       background: linear-gradient(rgba(240, 242, 245, 0.85), rgba(240, 242, 245, 0.85)), url('conseillere.png');
       background-size: cover;
       background-position: center;
@@ -33,59 +33,62 @@
       padding-top: 40px; 
     }
     .app-container {
-      max-width: 500px;
+      max-width: 800px;
       margin: 0 auto;
     }
     .card {
       border: none; 
-      border-radius: 25px; 
+      border-radius: 30px; 
       box-shadow: 0 15px 35px rgba(0,0,0,0.1); 
       background: #ffffff;
+      padding: 2rem !important;
     }
     .btn-pointage { 
-      height: 65px; 
-      font-size: 1.2rem; 
+      height: 80px; 
+      font-size: 1.4rem; 
       font-weight: 600; 
-      margin-bottom: 15px; 
-      border-radius: 18px; 
+      margin-bottom: 20px; 
+      border-radius: 22px; 
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
       border: none;
     }
-    .btn-pointage:hover { filter: brightness(1.1); transform: scale(1.02); }
-    .admin-header { background: var(--primary-color); color: white; border-radius: 25px 25px 0 0; padding: 15px; }
+    .btn-pointage:hover { filter: brightness(1.1); transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+    .admin-header { background: var(--primary-color); color: white; border-radius: 30px 30px 0 0; padding: 20px; }
     .hidden { display: none !important; }
     .status-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 20px; }
     .nav-pills .nav-link { 
       color: #ffffff90; 
       border-radius: 12px; 
-      padding: 15px 10px; 
-      font-size: 1.1rem; 
+      padding: 18px 15px; 
+      font-size: 1.2rem; 
       font-weight: 500;
       transition: all 0.3s ease;
     }
-    .nav-pills .nav-link i { font-size: 1.3rem; margin-right: 8px; vertical-align: middle; }
+    .nav-pills .nav-link i { font-size: 1.5rem; margin-right: 10px; vertical-align: middle; }
     .nav-pills .nav-link.active { background-color: var(--primary-color); }
-    .form-control, .form-select { border-radius: 15px; padding: 12px 20px; border: 2px solid #f1f2f6; background: #f8f9fa; }
+    .form-control, .form-select { border-radius: 18px; padding: 15px 25px; border: 2px solid #f1f2f6; background: #f8f9fa; font-size: 1.1rem; }
     .form-control:focus { border-color: var(--primary-color); background: #fff; box-shadow: none; }
     
     #liveClock {
-      font-size: 3rem;
+      font-size: 4.5rem;
       font-weight: 600;
       color: var(--primary-color);
       margin-bottom: 5px;
+      letter-spacing: -2px;
     }
+    #liveDate { font-size: 1.1rem; letter-spacing: 1px; }
     .history-item {
       background: #f8f9fa;
       border-radius: 15px;
-      padding: 10px 15px;
-      margin-bottom: 8px;
-      font-size: 0.9rem;
+      padding: 15px 20px;
+      margin-bottom: 12px;
+      font-size: 1.1rem;
     }
     .logo-img {
-      max-width: 60px;
+      max-width: 100px;
       height: auto;
     }
     .btn-manager {
@@ -1375,11 +1378,12 @@
     const agents = await getAgents();
     let logs = await getPointages();
 
+    const absences = [];
     agents.forEach(agent => {
         const aDejaPointe = logs.find(l => l.date === dateKey && l.name === agent);
 
         if (!aDejaPointe) {
-            const absence = {
+            absences.push({
                 date: dateKey,
                 iso_date: now.toISOString().split('T')[0],
                 name: agent,
@@ -1387,10 +1391,13 @@
                 pause: '-', retour: '-', depart: '-',
                 status: 'ABSENCE CONSTATED',
                 total: '0'
-            };
-            _supabase.from('pointages').insert([absence]);
+            });
         }
     });
+
+    if (absences.length > 0) {
+        await _supabase.from('pointages').insert(absences);
+    }
   }
 
   async function loadReports() {
