@@ -1,9 +1,22 @@
+-- 0. Activer l'extension pour la génération des UUID si nécessaire
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- Création de la séquence pour la génération automatique du matricule
 CREATE SEQUENCE IF NOT EXISTS agent_matricule_seq START 1001;
 
+-- Fonction RPC pour générer le prochain matricule
+CREATE OR REPLACE FUNCTION public.get_next_agent_matricule()
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN 'MAT-' || nextval('agent_matricule_seq')::text;
+END;
+$$;
+
 -- 1. Table des Agents
 CREATE TABLE IF NOT EXISTS public.agents (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     name text UNIQUE NOT NULL,
     matricule text DEFAULT 'MAT-' || nextval('agent_matricule_seq')::text,
@@ -12,14 +25,14 @@ CREATE TABLE IF NOT EXISTS public.agents (
 
 -- 2. Table des Managers
 CREATE TABLE IF NOT EXISTS public.managers (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     name text UNIQUE NOT NULL
 );
 
 -- 3. Table des Pointages
 CREATE TABLE IF NOT EXISTS public.pointages (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     name text NOT NULL,
     date text NOT NULL,
@@ -35,7 +48,7 @@ CREATE TABLE IF NOT EXISTS public.pointages (
 
 -- 4. Table des Demandes de Congés
 CREATE TABLE IF NOT EXISTS public.demandes_conges (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     agent_name text NOT NULL,
     type text NOT NULL,
@@ -48,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.demandes_conges (
 
 -- 5. Table des Primes et Retenues (Gestion de la Paie)
 CREATE TABLE IF NOT EXISTS public.primes_retenues (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     agent_name text NOT NULL,
     mois integer NOT NULL,
@@ -60,7 +73,7 @@ CREATE TABLE IF NOT EXISTS public.primes_retenues (
 
 -- 6. Table des Statistiques de Performance
 CREATE TABLE IF NOT EXISTS public.agent_performance_stats (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
     agent_name text NOT NULL,
     date date NOT NULL,
