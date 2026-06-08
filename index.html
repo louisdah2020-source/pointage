@@ -1915,40 +1915,29 @@
     let totalNetAgents = 0;
     let totalNetManagers = 0;
 
-    // Récupérer les listes d'agents et managers pour identification
     const { data: allAgents } = await _supabase.from('agents').select('name');
     const { data: allManagers } = await _supabase.from('managers').select('name');
-    const agentNames = new Set(allAgents.map(a => a.name));
-    const managerNames = new Set(allManagers.map(m => m.name));
+    const agentNames = new Set(allAgents ? allAgents.map(a => a.name) : []);
+    const managerNames = new Set(allManagers ? allManagers.map(m => m.name) : []);
 
     const tableRows = document.querySelectorAll('#payrollResults tr');
-    let totalNetGlobal = 0;
-
     tableRows.forEach(tr => {
         if (tr.cells.length < 7) return;
         const agent = tr.cells[0].innerText;
         const matricule = tr.cells[1].innerText;
         const hours = tr.cells[3].innerText;
-        const prime = tr.querySelector('.payroll-prime').value;
-        const retenue = tr.querySelector('.payroll-retenue').value;
         const prime = parseFloat(tr.querySelector('.payroll-prime').value) || 0;
         const retenue = parseFloat(tr.querySelector('.payroll-retenue').value) || 0;
         const netStr = tr.querySelector('.payroll-net').innerText;
-        
         const netVal = parseInt(netStr.replace(/[^0-9]/g, '')) || 0;
-        totalNetGlobal += netVal;
 
-        rows.push([
         const rowData = [
             agent,
             matricule,
             hours,
-            prime + " CFA",
-            retenue + " CFA",
             prime.toLocaleString() + " CFA",
             retenue.toLocaleString() + " CFA",
             netStr
-        ]);
         ];
 
         if (agentNames.has(agent)) {
@@ -2006,17 +1995,16 @@
     });
 
     // Pied de page (Signatures)
-    const finalY = doc.lastAutoTable.finalY + 25;
     const finalY = doc.lastAutoTable.finalY + 20;
     doc.setFontSize(11);
+    doc.setTextColor(0);
     doc.text(`TOTAL GÉNÉRAL NET À PAYER : ${(totalNetAgents + totalNetManagers).toLocaleString()} CFA`, 15, finalY);
 
     const finalYSignatures = finalY + 15;
     doc.setFontSize(11);
-    doc.setTextColor(0);
 
-    doc.text("Fait à Abidjan, le " + new Date().toLocaleDateString('fr-FR'), 25, finalY);
-    doc.text("Signature et Cachet Direction", 230, finalY);
+    doc.text("Fait à Abidjan, le " + new Date().toLocaleDateString('fr-FR'), 25, finalYSignatures);
+    doc.text("Signature et Cachet Direction", 230, finalYSignatures);
 
     doc.save(`Rapport_Virements_Paie_${monthText}_${year}.pdf`);
   }
