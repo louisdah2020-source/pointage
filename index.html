@@ -562,6 +562,37 @@
   </div>
 </div>
 
+<!-- Modal de Modification de Manager -->
+<div class="modal fade" id="editManagerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header text-white rounded-top-4" style="background-color: var(--manager-color) !important;">
+        <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Modifier Manager</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <input type="hidden" id="editManagerId">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Nom Complet</label>
+          <input type="text" id="editManagerNameInput" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Matricule</label>
+          <input type="text" id="editManagerMatriculeInput" class="form-control" readonly title="Le matricule ne peut pas être modifié manuellement">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Salaire de Base</label>
+          <input type="number" id="editManagerSalaryInput" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer border-0 p-4 pt-0">
+        <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-manager rounded-3 px-4 text-white" onclick="sauvegarderModificationManager()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal d'Informations au Lancement -->
 <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -811,7 +842,14 @@
                   <span class="fw-bold"><i class="bi bi-person-badge me-2"></i>${m.name}</span>
                   <br><small class="text-muted">${m.matricule || 'Sans matricule'} - ${m.salaire_base || 0} CFA</small>
                 </div>
-                <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerManager('${m.name}')"><i class="bi bi-trash"></i></button>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-primary btn-sm rounded-pill" onclick="ouvrirEditeurManager('${m.id}')" title="Modifier">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-danger btn-sm rounded-pill" onclick="supprimerManager('${m.name}')" title="Supprimer">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
             </li>
         `).join('');
     }
@@ -1857,9 +1895,9 @@
     const monthText = document.getElementById('payrollMonth').options[document.getElementById('payrollMonth').selectedIndex].text;
     const year = document.getElementById('payrollYear').value;
     
-    const logoImg = document.getElementById('appLogo');
-    if (logoImg) {
-        doc.addImage(logoImg, 'JPEG', 15, 10, 25, 25);
+    const logoImgElement = document.getElementById('appLogo');
+    if (logoImgElement && logoImgElement.src) {
+        doc.addImage(logoImgElement.src, 'JPEG', 15, 10, 25, 25);
     }
 
     // En-tête du document
@@ -1871,8 +1909,18 @@
     doc.setTextColor(50);
     doc.text(`RÉCAPITULATIF DES VIREMENTS DE PAIE - ${monthText.toUpperCase()} ${year}`, 148, 30, { align: 'center' });
 
-    // Récupération des données depuis le tableau HTML
-    const rows = [];
+    // Récupération des données depuis le tableau HTML et séparation Agents/Managers
+    const agentRows = [];
+    const managerRows = [];
+    let totalNetAgents = 0;
+    let totalNetManagers = 0;
+
+    // Récupérer les listes d'agents et managers pour identification
+    const { data: allAgents } = await _supabase.from('agents').select('name');
+    const { data: allManagers } = await _supabase.from('managers').select('name');
+    const agentNames = new Set(allAgents.map(a => a.name));
+    const managerNames = new Set(allManagers.map(m => m.name));
+
     const tableRows = document.querySelectorAll('#payrollResults tr');
     let totalNetGlobal = 0;
 
@@ -1883,27 +1931,69 @@
         const hours = tr.cells[3].innerText;
         const prime = tr.querySelector('.payroll-prime').value;
         const retenue = tr.querySelector('.payroll-retenue').value;
+        const prime = parseFloat(tr.querySelector('.payroll-prime').value) || 0;
+        const retenue = parseFloat(tr.querySelector('.payroll-retenue').value) || 0;
         const netStr = tr.querySelector('.payroll-net').innerText;
         
         const netVal = parseInt(netStr.replace(/[^0-9]/g, '')) || 0;
         totalNetGlobal += netVal;
 
         rows.push([
+        const rowData = [
             agent,
             matricule,
             hours,
             prime + " CFA",
             retenue + " CFA",
+            prime.toLocaleString() + " CFA",
+            retenue.toLocaleString() + " CFA",
             netStr
         ]);
+        ];
+
+        if (agentNames.has(agent)) {
+            agentRows.push(rowData);
+            totalNetAgents += netVal;
+        } else if (managerNames.has(agent)) {
+            managerRows.push(rowData);
+            totalNetManagers += netVal;
+        }
     });
 
     // Génération du tableau avec autoTable
+    // Tableau pour les Agents
+    doc.setFontSize(14);
+    doc.setTextColor(46, 49, 146);
+    doc.text("Agents", 15, 50);
     doc.autoTable({
         startY: 40,
+        startY: 55,
         head: [['Agent', 'Matricule', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
         body: rows,
         foot: [['TOTAL GÉNÉRAL', '', '', '', '', totalNetGlobal.toLocaleString() + " CFA"]],
+        body: agentRows,
+        foot: [['TOTAL AGENTS', '', '', '', '', totalNetAgents.toLocaleString() + " CFA"]],
+        theme: 'grid',
+        headStyles: { fillColor: [46, 49, 146], halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'right', fontStyle: 'bold' },
+        columnStyles: {
+            2: { halign: 'center' },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+            5: { halign: 'right', fontStyle: 'bold' }
+        }
+    });
+
+    // Tableau pour les Managers
+    const startYManagers = doc.lastAutoTable.finalY + 15; // Espacement entre les tableaux
+    doc.setFontSize(14);
+    doc.setTextColor(46, 49, 146);
+    doc.text("Managers", 15, startYManagers);
+    doc.autoTable({
+        startY: startYManagers + 5,
+        head: [['Manager', 'Matricule', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
+        body: managerRows,
+        foot: [['TOTAL MANAGERS', '', '', '', '', totalNetManagers.toLocaleString() + " CFA"]],
         theme: 'grid',
         headStyles: { fillColor: [46, 49, 146], halign: 'center' },
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'right', fontStyle: 'bold' },
@@ -1917,7 +2007,14 @@
 
     // Pied de page (Signatures)
     const finalY = doc.lastAutoTable.finalY + 25;
+    const finalY = doc.lastAutoTable.finalY + 20;
     doc.setFontSize(11);
+    doc.text(`TOTAL GÉNÉRAL NET À PAYER : ${(totalNetAgents + totalNetManagers).toLocaleString()} CFA`, 15, finalY);
+
+    const finalYSignatures = finalY + 15;
+    doc.setFontSize(11);
+    doc.setTextColor(0);
+
     doc.text("Fait à Abidjan, le " + new Date().toLocaleDateString('fr-FR'), 25, finalY);
     doc.text("Signature et Cachet Direction", 230, finalY);
 
@@ -2171,24 +2268,12 @@
 
         const headers = lines[0].split(',').map(h => h.trim());
         const expectedHeaders = ['Agent Name', 'Date', 'DONS', 'REFUS ARG', 'INDECIS', 'DEL'];
-        const rawHeaders = lines[0].split(',').map(h => h.trim());
-        const lowerCaseCsvHeaders = rawHeaders.map(h => h.toLowerCase());
         
-        const expectedHeadersMap = {
-            'agent name': 'agent_name',
-            'date': 'date',
-            'dons': 'dons',
-            'refus arg': 'refus_arg',
-            'indecis': 'indecis',
-            'del': 'del'
-        };
+        const lowerHeaders = headers.map(h => h.toLowerCase());
+        const expectedLower = expectedHeaders.map(h => h.toLowerCase());
 
-        if (!expectedHeaders.every(h => headers.includes(h))) {
+        if (!expectedLower.every(h => lowerHeaders.includes(h))) {
             showFeedback("En-têtes CSV invalides. Attendu: " + expectedHeaders.join(', '), true, 'performanceUploadFeedback');
-        // Vérifier si tous les en-têtes attendus sont présents (insensible à la casse)
-        const missingHeaders = Object.keys(expectedHeadersMap).filter(eh => !lowerCaseCsvHeaders.includes(eh));
-        if (missingHeaders.length > 0) {
-            showFeedback("En-têtes CSV invalides. Manquant: " + missingHeaders.map(h => `"${h}"`).join(', ') + ". Attendu: " + Object.keys(expectedHeadersMap).map(h => `"${h}"`).join(', '), true, 'performanceUploadFeedback');
             return;
         }
 
@@ -2200,31 +2285,19 @@
                 continue;
             }
 
-            const record = {};
-            headers.forEach((header, index) => {
-                record[header] = values[index];
             const mappedRecord = {};
-            // Mapper les valeurs du CSV aux clés attendues de la base de données
-            lowerCaseCsvHeaders.forEach((csvHeader, index) => {
-                const targetKey = expectedHeadersMap[csvHeader];
-                if (targetKey) { // S'assurer que c'est un en-tête que nous voulons mapper
-                    mappedRecord[targetKey] = values[index];
-                }
+            headers.forEach((h, idx) => {
+                const key = h.toLowerCase().replace(' ', '_');
+                mappedRecord[key] = values[idx];
             });
 
             recordsToInsert.push({
-                agent_name: record['Agent Name'],
-                date: record['Date'], // Assuming YYYY-MM-DD format
-                dons: parseInt(record['DONS'] || 0),
-                refus_arg: parseInt(record['REFUS ARG'] || 0),
-                indecis: parseInt(record['INDECIS'] || 0),
-                del: parseInt(record['DEL'] || 0),
-                agent_name: mappedRecord.agent_name,
+                agent_name: mappedRecord.agent_name || mappedRecord['agent_name'],
                 date: mappedRecord.date, // Assumer le format YYYY-MM-DD
                 dons: parseInt(mappedRecord.dons || 0),
                 refus_arg: parseInt(mappedRecord.refus_arg || 0),
                 indecis: parseInt(mappedRecord.indecis || 0),
-                del: parseInt(mappedRecord.del || 0),
+                del: parseInt(mappedRecord.del || 0)
             });
         }
 
@@ -2323,6 +2396,36 @@
       bootstrap.Modal.getInstance(document.getElementById('editAgentModal')).hide();
       refreshAgentLists();
       showFeedback("Agent mis à jour avec succès.");
+    }
+  }
+
+  async function ouvrirEditeurManager(id) {
+    const { data, error } = await _supabase.from('managers').select('*').eq('id', id).single();
+    if (error) return alert("Erreur lors de la récupération : " + error.message);
+    
+    document.getElementById('editManagerId').value = data.id;
+    document.getElementById('editManagerNameInput').value = data.name;
+    document.getElementById('editManagerMatriculeInput').value = data.matricule || '';
+    document.getElementById('editManagerSalaryInput').value = data.salaire_base || 0;
+    
+    new bootstrap.Modal(document.getElementById('editManagerModal')).show();
+  }
+
+  async function sauvegarderModificationManager() {
+    const id = document.getElementById('editManagerId').value;
+    const name = document.getElementById('editManagerNameInput').value.trim().toUpperCase();
+    const salary = document.getElementById('editManagerSalaryInput').value;
+    
+    const { error } = await _supabase.from('managers').update({
+      name: name,
+      salaire_base: salary
+    }).eq('id', id);
+    
+    if (error) alert("Erreur lors de la mise à jour : " + error.message);
+    else {
+      bootstrap.Modal.getInstance(document.getElementById('editManagerModal')).hide();
+      refreshAgentLists();
+      showFeedback("Informations du manager mises à jour avec succès.");
     }
   }
 </script>
