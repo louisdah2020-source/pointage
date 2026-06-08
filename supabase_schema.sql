@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS public.agents (
 CREATE TABLE IF NOT EXISTS public.managers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at timestamp with time zone DEFAULT now(),
-    name text UNIQUE NOT NULL
+    name text UNIQUE NOT NULL,
+    matricule text DEFAULT 'MAT-' || nextval('agent_matricule_seq')::text,
+    salaire_base numeric DEFAULT 0
 );
 
 -- 3. Table des Pointages
