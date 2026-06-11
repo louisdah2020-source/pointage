@@ -31,7 +31,9 @@ try {
     }
 
     // --- EMBARQUER LE LOGO ---
-    $mail->addEmbeddedImage('logo.jpg', 'logo_entreprise');
+    if (file_exists('logo.jpg')) {
+        $mail->addEmbeddedImage('logo.jpg', 'logo_entreprise');
+    }
 
     if (isset($data['isSummary']) && $data['isSummary']) {
         // --- MODE RÉCAPITULATIF JOURNALIER ---

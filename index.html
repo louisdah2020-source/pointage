@@ -1840,15 +1840,22 @@
     };
 
     try {
-      const res = await fetch('send_mail.php', {
+      const response = await fetch('send_mail.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
-      if (!silent) alert(result.success ? "Récapitulatif envoyé avec succès !" : "Erreur : " + result.message);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur Serveur (${response.status}): ${errorText.substring(0, 100)}`);
+      }
+
+      const result = await response.json();
+      if (!silent) alert(result.success ? "Récapitulatif envoyé avec succès !" : "Erreur Mail : " + result.message);
     } catch (e) {
-      if (!silent) alert("Erreur réseau lors de l'envoi du récapitulatif.");
+      console.error("Détails erreur envoi mail:", e);
+      if (!silent) alert("Impossible d'envoyer le récapitulatif : " + e.message);
     }
   }
 
