@@ -129,10 +129,25 @@ switch ($action) {
                 $stmt->execute([$data['arrivee'], $data['pause'], $data['retour'], $data['depart'], $data['status'], $data['total'], $data['motif'], $data['id']]);
             } else {
                 // Insert
-                $sql = "INSERT INTO pointages (date, iso_date, name, arrivee, pause, retour, depart, status, total, motif) VALUES (?,?,?,?,?,?,?,?,?,?)";
+                $sql = "INSERT INTO pointages (date, iso_date, name, arrivee, pause, retour, depart, status, total, motif, device_id, ip_address) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$data['date'], $data['iso_date'], $data['name'], $data['arrivee'], $data['pause'], $data['retour'], $data['depart'], $data['status'], $data['total'], $data['motif'] ?? '']);
+                $stmt->execute([$data['date'], $data['iso_date'], $data['name'], $data['arrivee'], $data['pause'], $data['retour'], $data['depart'], $data['status'], $data['total'], $data['motif'] ?? '', $data['device_id'] ?? null, $data['ip_address'] ?? null]);
             }
+            echo json_encode(['success' => true]);
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        break;
+
+    case 'deletePointage':
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (!isset($data['id'])) {
+            echo json_encode(['success' => false, 'message' => 'ID manquant.']);
+            break;
+        }
+        try {
+            $stmt = $pdo->prepare("DELETE FROM pointages WHERE id = ?");
+            $stmt->execute([$data['id']]);
             echo json_encode(['success' => true]);
         } catch (PDOException $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);

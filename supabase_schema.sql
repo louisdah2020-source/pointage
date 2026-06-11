@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS public.agents (
     matricule text DEFAULT 'MAT-' || nextval('agent_matricule_seq')::text,
     salaire_base numeric DEFAULT 0
 );
+);
 
 -- 2. Table des Managers
 CREATE TABLE IF NOT EXISTS public.managers (
@@ -45,8 +46,31 @@ CREATE TABLE IF NOT EXISTS public.pointages (
     depart text,
     status text,
     total numeric DEFAULT 0,
-    motif text
+    motif text,
+    device_id text,
+    ip_address text
 );
+
+-- Fonction pour vérifier qu'un appareil n'est pas utilisé par plusieurs personnes le même jour
+CREATE OR REPLACE FUNCTION public.check_device_sharing()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.pointages
+    WHERE iso_date = NEW.iso_date
+      AND device_id = NEW.device_id
+      AND name != NEW.name
+  ) THEN
+    RAISE EXCEPTION 'Sécurité : Cet appareil est déjà utilisé par un autre agent aujourd''hui.';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Déclencheur (Trigger) de sécurité
+CREATE TRIGGER trigger_security_device_check
+BEFORE INSERT ON public.pointages
+FOR EACH ROW EXECUTE FUNCTION public.check_device_sharing();
 
 -- 4. Table des Demandes de Congés
 CREATE TABLE IF NOT EXISTS public.demandes_conges (
@@ -86,6 +110,15 @@ CREATE TABLE IF NOT EXISTS public.agent_performance_stats (
     CONSTRAINT unique_agent_date UNIQUE (agent_name, date)
 );
 
+-- 7. Table des Commandes à distance pour les appareils
+CREATE TABLE IF NOT EXISTS public.device_commands (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at timestamp with time zone DEFAULT now(),
+    device_id text NOT NULL,
+    command text NOT NULL, -- ex: 'RESET_CACHE'
+    executed boolean DEFAULT false
+);
+
 -- Activation de la sécurité (RLS) et politiques par défaut
 -- Note : Pour le développement, nous autorisons toutes les opérations. 
 -- En production, restreignez ces accès aux utilisateurs authentifiés.
@@ -96,6 +129,7 @@ ALTER TABLE pointages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE demandes_conges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE primes_retenues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_performance_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_commands ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON agents;
 CREATE POLICY "Allow all" ON agents FOR ALL USING (true) WITH CHECK (true);
@@ -114,3 +148,6 @@ CREATE POLICY "Allow all" ON primes_retenues FOR ALL USING (true) WITH CHECK (tr
 
 DROP POLICY IF EXISTS "Allow all" ON agent_performance_stats;
 CREATE POLICY "Allow all" ON agent_performance_stats FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all" ON device_commands;
+CREATE POLICY "Allow all" ON device_commands FOR ALL USING (true) WITH CHECK (true);

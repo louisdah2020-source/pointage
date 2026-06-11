@@ -367,6 +367,12 @@
 
         <!-- Onglet Rapports -->
         <div id="tab-reports" class="hidden">
+          <div class="d-flex gap-2 mb-4">
+            <button class="btn btn-outline-primary btn-sm active" id="btnShowPointages" onclick="switchReportView('pointages')"><i class="bi bi-list-ul me-1"></i>Historique des Pointages</button>
+            <button class="btn btn-outline-danger btn-sm" id="btnShowAnomalies" onclick="switchReportView('anomalies')"><i class="bi bi-shield-exclamation me-1"></i>Sécurité & Doublons Appareils</button>
+          </div>
+
+          <div id="pointageReportUI">
           <div class="row g-3 mb-4">
             <div class="col-md-3">
               <label class="form-label small fw-bold">Date de début</label>
@@ -399,6 +405,22 @@
               </thead>
               <tbody id="reportData"></tbody>
             </table>
+          </div>
+          </div>
+
+          <!-- Vue Détection de Fraude (Anomalies) -->
+          <div id="anomalyReportUI" class="hidden">
+            <div class="alert alert-warning rounded-4 border-0 shadow-sm mb-4">
+              <i class="bi bi-info-circle-fill me-2"></i>Ce rapport liste les cas suspects où <strong>plusieurs agents</strong> ont utilisé le <strong>même appareil</strong> le même jour.
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead class="table-light">
+                  <tr><th>Date</th><th>ID Appareil (Fingerprint)</th><th>Dernière IP</th><th>Agents sur ce poste</th><th>Action</th></tr>
+                </thead>
+                <tbody id="anomalyData"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -660,6 +682,32 @@
   // La sécurité par appareil reste en localStorage car elle est liée à la machine physique
   if (!localStorage.getItem('device_logs')) localStorage.setItem('device_logs', JSON.stringify({})); // Journal des actions par appareil
   if (!localStorage.getItem('logRetentionDays')) localStorage.setItem('logRetentionDays', '30'); // Durée de rétention par défaut
+
+  // --- ÉCOUTEUR DE COMMANDES À DISTANCE ---
+  async function checkRemoteCommands() {
+    const deviceId = localStorage.getItem('browser_fingerprint');
+    if (!deviceId) return;
+
+    const { data, error } = await _supabase
+      .from('device_commands')
+      .select('*')
+      .eq('device_id', deviceId)
+      .eq('executed', false);
+
+    if (data && data.length > 0) {
+      for (const cmd of data) {
+        if (cmd.command === 'RESET_CACHE') {
+          // Marquer comme exécutée pour éviter une boucle de rechargement
+          await _supabase.from('device_commands').update({ executed: true }).eq('id', cmd.id);
+          
+          localStorage.clear();
+          alert("Cet appareil a été réinitialisé à distance par l'administrateur pour corriger un problème de pointage. La page va se recharger.");
+          location.reload();
+        }
+      }
+    }
+  }
+
   let DEVICE_LOG_RETENTION_DAYS = parseInt(localStorage.getItem('logRetentionDays')); // Garder les logs pendant X jours
 
   async function getAgents() { 
@@ -909,6 +957,29 @@
     const now = new Date();
     const dateKey = now.toLocaleDateString('fr-FR');
     const h = now.getHours() + (now.getMinutes() / 60);
+
+    // Génération/Récupération d'un identifiant unique de navigateur
+    let deviceFingerprint = localStorage.getItem('browser_fingerprint');
+    if (!deviceFingerprint) {
+      deviceFingerprint = 'DEV-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('browser_fingerprint', deviceFingerprint);
+    }
+
+    // Récupération optionnelle de l'IP (asynchrone)
+    let ipAddr = "0.0.0.0";
+    try {
+      const ipRes = await fetch('https://api.ipify.org?format=json');
+      const ipData = await ipRes.json();
+      ipAddr = ipData.ip;
+    } catch(e) { console.warn("Impossible de récupérer l'IP"); }
+
+    // Vérification de sécurité par appareil : Verrouiller la machine au premier agent qui pointe
+    let deviceLogs = getDeviceLogs();
+    if (deviceLogs[dateKey] && deviceLogs[dateKey].agentName && deviceLogs[dateKey].agentName !== name) {
+      alert(`Sécurité : Cet appareil a déjà été utilisé par ${deviceLogs[dateKey].agentName} aujourd'hui. Pour éviter les fraudes, un seul agent peut pointer par terminal.`);
+      return;
+    }
+
     let timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
     // Logique d'arrondi et de règles horaires
@@ -934,9 +1005,9 @@
       if (h > 11.5) status = "ABSENCE (TARDIF)";
       else if (h >= 10.0833) status = "RETARD"; // 10.0833 correspond à 10h05
       
-      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0 };
+      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0, device_id: deviceFingerprint, ip_address: ipAddr };
       const { error } = await _supabase.from('pointages').insert([entry]);
-      if (error) return alert("Erreur lors de l'enregistrement : " + error.message);
+      if (error) return alert("Erreur de sécurité : " + error.message);
       
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
@@ -965,9 +1036,10 @@
     }
 
     // Enregistrer l'action pour cet appareil
-    let deviceLogs = getDeviceLogs();
-    if (!deviceLogs[dateKey]) deviceLogs[dateKey] = [];
-    deviceLogs[dateKey].push(type);
+    if (!deviceLogs[dateKey] || Array.isArray(deviceLogs[dateKey])) {
+      deviceLogs[dateKey] = { agentName: name, actions: [] };
+    }
+    deviceLogs[dateKey].actions.push(type);
     saveDeviceLogs(deviceLogs);
     showFeedback(`Pointage ${type} enregistré à ${timeStr}`, false, feedbackId);
     
@@ -1472,7 +1544,7 @@
     document.getElementById(id).classList.remove('hidden');
     el.classList.add('active');
     if (id === 'tab-reports') {
-      loadReports(); // Recharger les rapports si on bascule sur cet onglet
+      switchReportView('pointages'); 
     } else if (id === 'tab-conges') {
       loadPendingLeaves();
     } else if (id === 'tab-agents') {
@@ -1577,9 +1649,14 @@
         <td><span class="status-badge ${r.status === 'RETARD' || r.status.includes('ABSENCE') ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
         <td>${r.motif || '-'}</td>
         <td>
-          <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')">
-            <i class="bi bi-pencil"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')" title="Modifier">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger py-0" onclick="supprimerPointage('${r.id}')" title="Supprimer">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </td>
       </tr>`;
       
@@ -1653,6 +1730,17 @@
       bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
       loadReports();
       showFeedback("Pointage mis à jour avec succès.");
+    }
+  }
+
+  async function supprimerPointage(id) {
+    if (!confirm("Voulez-vous vraiment supprimer ce pointage ? Cela libérera cet appareil pour un autre agent aujourd'hui.")) return;
+    
+    const { error } = await _supabase.from('pointages').delete().eq('id', id);
+    if (error) alert("Erreur lors de la suppression : " + error.message);
+    else {
+      showFeedback("Pointage supprimé avec succès.");
+      loadReports();
     }
   }
 
