@@ -20,8 +20,13 @@ CREATE TABLE IF NOT EXISTS public.agents (
     created_at timestamp with time zone DEFAULT now(),
     name text UNIQUE NOT NULL,
     matricule text DEFAULT 'MAT-' || nextval('agent_matricule_seq')::text,
-    salaire_base numeric DEFAULT 0
-);
+    salaire_base numeric DEFAULT 0,
+    is_active boolean DEFAULT true,
+    date_entree date DEFAULT CURRENT_DATE,
+    date_sortie date,
+    service text,
+    type_contrat text,
+    statut_paiement text DEFAULT 'NON_PAYE'
 );
 
 -- 2. Table des Managers

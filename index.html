@@ -278,6 +278,7 @@
           <button class="nav-link active" onclick="switchTab('tab-agents', this)"><i class="bi bi-people"></i> RH</button>
           <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-bar-chart"></i> Rapports</button>
           <button class="nav-link" onclick="switchTab('tab-conges', this)"><i class="bi bi-calendar-event"></i> Congés</button>
+          <button class="nav-link" onclick="switchTab('tab-gestion-detaillee', this)"><i class="bi bi-person-vcard"></i> Gestion</button>
           <button class="nav-link" onclick="switchTab('tab-compta', this)"><i class="bi bi-cash-stack"></i> Paie</button>
           <button class="nav-link" onclick="switchTab('tab-managers', this)"><i class="bi bi-person-badge"></i> Managers</button>
         </nav>
@@ -433,6 +434,32 @@
           </div>
         </div>
 
+        <!-- Onglet Gestion Détaillée des Agents -->
+        <div id="tab-gestion-detaillee" class="hidden">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Effectif & Suivi Administratif</h5>
+            <button class="btn btn-danger btn-sm rounded-pill px-3" onclick="exporterEffectifPDF()">
+              <i class="bi bi-file-pdf me-1"></i>Exporter PDF
+            </button>
+          </div>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted text-uppercase">Filtrer par Service</label>
+              <select id="filterServiceGestion" class="form-select form-select-sm" onchange="loadDetailedAgentList()">
+                <option value="">Tous les services</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr><th>Agent</th><th>Entrée/Sortie</th><th>Service</th><th>Contrat</th><th>Effectif</th><th>Paiement</th><th>Action</th></tr>
+              </thead>
+              <tbody id="detailedAgentListData"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Onglet Paie -->
         <div id="tab-compta" class="hidden">
           <h5 class="mb-3">Gestion de la Paie</h5>
@@ -457,7 +484,7 @@
           <div class="table-responsive">
             <table class="table table-hover align-middle">
               <thead class="table-light">
-                <tr><th>Agent</th><th>Matricule</th><th>Salaire Base</th><th>Heures Travaillées</th><th>Primes</th><th>Retenues</th><th>Salaire Net</th><th>Action</th></tr>
+                <tr><th>Agent</th><th>Matricule</th><th>Sortie</th><th>Salaire Base</th><th>Heures Travaillées</th><th>Primes</th><th>Retenues</th><th>Salaire Net</th><th>Action</th></tr>
               </thead>
               <tbody id="payrollResults"></tbody>
             </table>
@@ -573,6 +600,45 @@
         <div class="mb-3">
           <label class="form-label small fw-bold">Salaire de Base</label>
           <input type="number" id="editAgentSalary" class="form-control">
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-bold">Date d'Entrée</label>
+            <input type="date" id="editAgentDateEntree" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold">Date de Sortie</label>
+            <input type="date" id="editAgentDateSortie" class="form-control">
+          </div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-bold">Service</label>
+            <input type="text" id="editAgentService" class="form-control" placeholder="ex: Commercial">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold">Type de Contrat</label>
+            <select id="editAgentTypeContrat" class="form-select">
+              <option value="CDI">CDI</option>
+              <option value="CDD">CDD</option>
+              <option value="STAGE">Stage</option>
+              <option value="PRESTATAIRE">Prestataire</option>
+            </select>
+          </div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-12">
+            <label class="form-label small fw-bold">Statut Paiement</label>
+            <select id="editAgentStatutPaiement" class="form-select">
+              <option value="NON_PAYE">Non payé</option>
+              <option value="EN_ATTENTE">En attente</option>
+              <option value="PAYE">Payé (Tout reçu)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="editAgentActive">
+          <label class="form-check-label fw-bold" for="editAgentActive">Agent présent dans l'effectif</label>
         </div>
         <div id="editAgentModalFeedback" class="mt-3 alert rounded-4 shadow-sm hidden text-center small fw-bold"></div>
       </div>
@@ -710,8 +776,10 @@
 
   let DEVICE_LOG_RETENTION_DAYS = parseInt(localStorage.getItem('logRetentionDays')); // Garder les logs pendant X jours
 
-  async function getAgents() { 
-    const { data, error } = await _supabase.from('agents').select('name').order('name');
+  async function getAgents(onlyActive = false) { 
+    let query = _supabase.from('agents').select('name, is_active').order('name');
+    if (onlyActive) query = query.eq('is_active', true);
+    const { data, error } = await query;
     if (error) console.error(error);
     return data ? data.map(a => a.name) : [];
   }
@@ -856,14 +924,15 @@
 
   // Fonction centralisée pour rafraîchir toutes les listes d'agents
   async function refreshAgentLists() {
-    const agents = await getAgents();
+    const agents = await getAgents(); // Tous pour l'admin
+    const activeAgents = await getAgents(true); // Uniquement actifs pour le pointage
     const managers = await getManagers();
     
     // 1. Liste déroulante du pointage (Vue Agent)
     const agentSelect = document.getElementById('agentName');
     const currentVal = agentSelect.value;
     agentSelect.innerHTML = '<option value="" disabled selected>Choisir un profil...</option>';
-    agents.forEach(agent => {
+    activeAgents.forEach(agent => {
       const option = document.createElement('option');
       option.value = agent;
       option.textContent = agent;
@@ -942,7 +1011,7 @@
     const manualAgentSelect = document.getElementById('manualAgentSelect');
     if (manualAgentSelect) { // Vérifier si l'élément existe
       const currentSelectedManualAgent = manualAgentSelect.value;
-      manualAgentSelect.innerHTML = agents.map(a => `<option>${a}</option>`).join('');
+      manualAgentSelect.innerHTML = activeAgents.map(a => `<option>${a}</option>`).join('');
       if (currentSelectedManualAgent && agents.includes(currentSelectedManualAgent)) manualAgentSelect.value = currentSelectedManualAgent;
       else if (agents.length > 0) manualAgentSelect.value = agents[0]; // Sélectionner le premier agent par défaut
     }
@@ -1528,6 +1597,7 @@
   async function loadAdminData() {
     loadReports();
     detecterAbsencesAutomatiques();
+    verifierAbsencesProlongees();
     await refreshAgentLists(); 
     loadPopupConfig(true); // Charger les données dans le formulaire admin
     document.getElementById('logRetentionDays').value = DEVICE_LOG_RETENTION_DAYS; // Afficher la valeur actuelle
@@ -1535,7 +1605,7 @@
 
   function switchTab(id, el) {
     // Masquer tous les onglets possibles pour éviter les superpositions
-    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-compta', 'tab-managers'].forEach(tabId => {
+    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-gestion-detaillee', 'tab-compta', 'tab-managers'].forEach(tabId => {
       const tabEl = document.getElementById(tabId);
       if (tabEl) tabEl.classList.add('hidden');
     });
@@ -1545,6 +1615,8 @@
     el.classList.add('active');
     if (id === 'tab-reports') {
       switchReportView('pointages'); 
+    } else if (id === 'tab-gestion-detaillee') {
+      loadDetailedAgentList();
     } else if (id === 'tab-conges') {
       loadPendingLeaves();
     } else if (id === 'tab-agents') {
@@ -1914,10 +1986,14 @@
         // Formule : Salaire proratisé sur une base de 173.33h/mois
         const net = ((base / 173.33) * hours) + prime - retenue;
         
+        const dateSortieStr = a.date_sortie ? new Date(a.date_sortie).toLocaleDateString('fr-FR') : '---';
+        const isSortieInMonth = a.date_sortie && a.date_sortie.startsWith(prefix);
+
         return `
-            <tr class="payroll-row" data-agent="${a.name}">
+            <tr class="payroll-row ${isSortieInMonth ? 'table-warning' : ''}" data-agent="${a.name}">
                 <td class="fw-bold text-dark">${a.name}</td>
                 <td>${a.matricule || '---'}</td>
+                <td class="${isSortieInMonth ? 'text-danger fw-bold' : ''}">${dateSortieStr}</td>
                 <td>${base.toLocaleString()}</td>
                 <td class="fw-bold">${hours.toFixed(2)}h</td>
                 <td><input type="number" class="form-control form-control-sm payroll-prime" style="max-width: 100px" value="${prime}" oninput="updateRowNet(this)"></td>
@@ -2010,10 +2086,11 @@
 
     const tableRows = document.querySelectorAll('#payrollResults tr');
     tableRows.forEach(tr => {
-        if (tr.cells.length < 7) return;
+        if (tr.cells.length < 8) return;
         const agent = tr.cells[0].innerText;
         const matricule = tr.cells[1].innerText;
-        const hours = tr.cells[3].innerText;
+        const dateSortie = tr.cells[2].innerText;
+        const hours = tr.cells[4].innerText;
         const prime = parseFloat(tr.querySelector('.payroll-prime').value) || 0;
         const retenue = parseFloat(tr.querySelector('.payroll-retenue').value) || 0;
         const netStr = tr.querySelector('.payroll-net').innerText;
@@ -2022,6 +2099,7 @@
         const rowData = [
             agent,
             matricule,
+            dateSortie,
             hours,
             prime.toLocaleString() + " CFA",
             retenue.toLocaleString() + " CFA",
@@ -2043,21 +2121,18 @@
     doc.setTextColor(46, 49, 146);
     doc.text("Agents", 15, 50);
     doc.autoTable({
-        startY: 40,
         startY: 55,
-        head: [['Agent', 'Matricule', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
-        body: rows,
-        foot: [['TOTAL GÉNÉRAL', '', '', '', '', totalNetGlobal.toLocaleString() + " CFA"]],
+        head: [['Agent', 'Matricule', 'Sortie', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
         body: agentRows,
-        foot: [['TOTAL AGENTS', '', '', '', '', totalNetAgents.toLocaleString() + " CFA"]],
+        foot: [['TOTAL AGENTS', '', '', '', '', '', totalNetAgents.toLocaleString() + " CFA"]],
         theme: 'grid',
         headStyles: { fillColor: [46, 49, 146], halign: 'center' },
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'right', fontStyle: 'bold' },
         columnStyles: {
-            2: { halign: 'center' },
-            3: { halign: 'right' },
+            3: { halign: 'center' },
             4: { halign: 'right' },
-            5: { halign: 'right', fontStyle: 'bold' }
+            5: { halign: 'right' },
+            6: { halign: 'right', fontStyle: 'bold' }
         }
     });
 
@@ -2068,17 +2143,17 @@
     doc.text("Managers", 15, startYManagers);
     doc.autoTable({
         startY: startYManagers + 5,
-        head: [['Manager', 'Matricule', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
+        head: [['Manager', 'Matricule', 'Sortie', 'Heures', 'Primes', 'Retenues', 'Net à Payer']],
         body: managerRows,
-        foot: [['TOTAL MANAGERS', '', '', '', '', totalNetManagers.toLocaleString() + " CFA"]],
+        foot: [['TOTAL MANAGERS', '', '', '', '', '', totalNetManagers.toLocaleString() + " CFA"]],
         theme: 'grid',
         headStyles: { fillColor: [46, 49, 146], halign: 'center' },
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'right', fontStyle: 'bold' },
         columnStyles: {
-            2: { halign: 'center' },
-            3: { halign: 'right' },
+            3: { halign: 'center' },
             4: { halign: 'right' },
-            5: { halign: 'right', fontStyle: 'bold' }
+            5: { halign: 'right' },
+            6: { halign: 'right', fontStyle: 'bold' }
         }
     });
 
@@ -2416,6 +2491,14 @@
     document.getElementById('editAgentMatricule').value = data.matricule || '';
     document.getElementById('editAgentSalary').value = data.salaire_base || 0;
 
+    // Nouveaux champs
+    document.getElementById('editAgentDateEntree').value = data.date_entree || '';
+    document.getElementById('editAgentDateSortie').value = data.date_sortie || '';
+    document.getElementById('editAgentService').value = data.service || '';
+    document.getElementById('editAgentTypeContrat').value = data.type_contrat || 'CDD';
+    document.getElementById('editAgentStatutPaiement').value = data.statut_paiement || 'NON_PAYE';
+    document.getElementById('editAgentActive').checked = data.is_active !== false;
+
     // Réinitialiser le feedback et gérer l'affichage du bouton "Générer"
     document.getElementById('editAgentModalFeedback').classList.add('hidden');
     const btnGenerate = document.getElementById('btnGenerateMatricule');
@@ -2457,7 +2540,13 @@
     
     const updateData = {
       name: name,
-      salaire_base: salary
+      salaire_base: salary,
+      date_entree: document.getElementById('editAgentDateEntree').value,
+      date_sortie: document.getElementById('editAgentDateSortie').value || null,
+      service: document.getElementById('editAgentService').value,
+      type_contrat: document.getElementById('editAgentTypeContrat').value,
+      statut_paiement: document.getElementById('editAgentStatutPaiement').value,
+      is_active: document.getElementById('editAgentActive').checked
     };
 
     // N'inclure le matricule dans la mise à jour que s'il n'est pas vide
@@ -2472,6 +2561,88 @@
       bootstrap.Modal.getInstance(document.getElementById('editAgentModal')).hide();
       refreshAgentLists();
       showFeedback("Agent mis à jour avec succès.");
+    }
+  }
+
+  async function loadDetailedAgentList() {
+    const { data: agents, error } = await _supabase.from('agents').select('*').order('name');
+    if (error) return console.error(error);
+    
+    // Mise à jour dynamique de la liste des services dans le filtre
+    const filterSelect = document.getElementById('filterServiceGestion');
+    const selectedService = filterSelect.value;
+    const services = [...new Set(agents.map(a => a.service).filter(s => s))].sort();
+    
+    filterSelect.innerHTML = '<option value="">Tous les services</option>';
+    services.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      filterSelect.appendChild(opt);
+    });
+    filterSelect.value = selectedService;
+
+    const tbody = document.getElementById('detailedAgentListData');
+    tbody.innerHTML = agents
+      .filter(a => !selectedService || a.service === selectedService)
+      .map(a => {
+      let payBadge = 'bg-danger';
+      let payText = 'Non payé';
+      if(a.statut_paiement === 'PAYE') { payBadge = 'bg-success'; payText = 'Payé'; }
+      else if(a.statut_paiement === 'EN_ATTENTE') { payBadge = 'bg-warning text-dark'; payText = 'En attente'; }
+      
+      return `<tr>
+          <td class="fw-bold text-dark">${a.name}</td>
+          <td>
+            <div class="small">In: ${a.date_entree ? new Date(a.date_entree).toLocaleDateString('fr-FR') : '---'}</div>
+            <div class="small text-danger">Out: ${a.date_sortie ? new Date(a.date_sortie).toLocaleDateString('fr-FR') : '---'}</div>
+          </td>
+          <td><span class="small text-muted">${a.service || '---'}</span></td>
+          <td><span class="badge bg-light text-dark border">${a.type_contrat || '---'}</span></td>
+          <td>
+            <span class="badge ${a.is_active ? 'bg-success' : 'bg-secondary'}">${a.is_active ? 'ACTIF' : 'SORTI'}</span>
+          </td>
+          <td><span class="badge ${payBadge}">${payText}</span></td>
+          <td><button class="btn btn-sm btn-outline-primary rounded-pill" onclick="ouvrirEditeurAgent('${a.id}')"><i class="bi bi-pencil"></i></button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function verifierAbsencesProlongees() {
+    // Récupérer les agents actifs
+    const { data: agents } = await _supabase.from('agents').select('*').eq('is_active', true);
+    if (!agents) return;
+
+    // Récupérer les pointages récents (derniers 7 jours pour être sûr d'avoir 3 jours ouvrés)
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const { data: logs } = await _supabase.from('pointages')
+        .select('name, status, iso_date')
+        .gte('iso_date', weekAgo.toISOString().split('T')[0])
+        .order('iso_date', { ascending: false });
+
+    if (!logs) return;
+
+    for (const agent of agents) {
+        const agentLogs = logs.filter(l => l.name === agent.name);
+        // On regarde si les 3 derniers enregistrements sont des absences
+        if (agentLogs.length >= 3) {
+            const last3AreAbsences = agentLogs.slice(0, 3).every(l => l.status.includes('ABSENCE'));
+            
+            if (last3AreAbsences) {
+                const confirmation = confirm(`ALERTE RH : L'agent ${agent.name} a été absent pendant 3 jours consécutifs.\n\nSouhaitez-vous le sortir de l'effectif automatiquement ?`);
+                if (confirmation) {
+                    const today = new Date().toISOString().split('T')[0];
+                    await _supabase.from('agents').update({ 
+                        is_active: false, 
+                        date_sortie: today 
+                    }).eq('id', agent.id);
+                    showFeedback(`${agent.name} a été retiré de l'effectif.`);
+                    refreshAgentLists();
+                    loadDetailedAgentList();
+                }
+            }
+        }
     }
   }
 
