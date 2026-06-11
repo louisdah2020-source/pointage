@@ -2310,6 +2310,11 @@
   }
 
   setInterval(updateClock, 1000);
+  // Vérifier les commandes de réinitialisation toutes les minutes
+  setInterval(checkRemoteCommands, 60000);
+  // Et une fois au démarrage
+  checkRemoteCommands();
+
   purgeOldDeviceLogs(); // Exécuter la purge au chargement de l'application
   refreshAgentLists();
   
@@ -2674,6 +2679,116 @@
       refreshAgentLists();
       showFeedback("Informations du manager mises à jour avec succès.");
     }
+  }
+
+  // --- GESTION DES VUES DE RAPPORT (HISTORIQUE VS ANOMALIES) ---
+  function switchReportView(view) {
+    const pointageUI = document.getElementById('pointageReportUI');
+    const anomalyUI = document.getElementById('anomalyReportUI');
+    const btnPointages = document.getElementById('btnShowPointages');
+    const btnAnomalies = document.getElementById('btnShowAnomalies');
+
+    if (pointageUI) pointageUI.classList.toggle('hidden', view !== 'pointages');
+    if (anomalyUI) anomalyUI.classList.toggle('hidden', view !== 'anomalies');
+    if (btnPointages) btnPointages.classList.toggle('active', view === 'pointages');
+    if (btnAnomalies) btnAnomalies.classList.toggle('active', view === 'anomalies');
+
+    if (view === 'anomalies') loadDeviceAnomalies();
+    else loadReports();
+  }
+
+  // --- DÉTECTION DES DOUBLONS ET FRAUDES (SÉCURITÉ) ---
+  async function loadDeviceAnomalies() {
+    const logs = await getPointages();
+    const tbody = document.getElementById('anomalyData');
+    if (!tbody) return;
+    
+    // Groupement par date et device_id pour identifier le partage de poste
+    const groups = {};
+    logs.forEach(l => {
+        if (!l.device_id || l.device_id === 'null') return;
+        const key = `${l.iso_date}_${l.device_id}`;
+        if (!groups[key]) {
+            groups[key] = { date: l.date, device_id: l.device_id, ip: l.ip_address, agents: [] };
+        }
+        if (!groups[key].agents.includes(l.name)) groups[key].agents.push(l.name);
+    });
+
+    // On ne garde que les cas où plus d'un agent unique a utilisé le même appareil le même jour
+    const suspects = Object.values(groups).filter(g => g.agents.length > 1);
+    
+    if (suspects.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-5 text-muted"><i class="bi bi-check-circle text-success d-block h1"></i>Aucune suspicion de fraude détectée.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = suspects.map(s => `
+        <tr class="table-danger">
+            <td class="fw-bold">${s.date}</td>
+            <td><small class="text-muted font-monospace">${s.device_id}</small></td>
+            <td><span class="badge bg-secondary">${s.ip || '---'}</span></td>
+            <td>
+                ${s.agents.map(a => `<span class="badge bg-danger me-1">${a}</span>`).join('')}
+                <div class="mt-1 small text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>Buddy Punching suspecté (${s.agents.length} agents)</div>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-danger rounded-pill px-3" onclick="sendResetCommand('${s.device_id}')">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Réinitialiser
+                </button>
+            </td>
+        </tr>
+    `).join('');
+  }
+
+  async function sendResetCommand(deviceId) {
+    if (!confirm("Voulez-vous forcer la réinitialisation du cache de cet appareil ? L'agent verra une alerte et son navigateur sera rafraîchi.")) return;
+    const { error } = await _supabase.from('device_commands').insert([{ device_id: deviceId, command: 'RESET_CACHE' }]);
+    if (error) alert("Erreur lors de l'envoi de la commande : " + error.message);
+    else alert("Commande de réinitialisation envoyée. Elle sera exécutée dès que l'appareil se connectera.");
+  }
+
+  // --- EXPORTATION PDF DE L'EFFECTIF ---
+  async function exporterEffectifPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    const logoImgElement = document.getElementById('appLogo');
+    if (logoImgElement && logoImgElement.src) {
+        doc.addImage(logoImgElement.src, 'JPEG', 15, 10, 20, 20);
+    }
+
+    doc.setFontSize(20);
+    doc.setTextColor(46, 49, 146);
+    doc.text("MEDIA YAB sarl", 105, 20, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(50);
+    doc.text("LISTE DE L'EFFECTIF DU PERSONNEL", 105, 30, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`Document généré le : ${new Date().toLocaleDateString('fr-FR')}`, 105, 36, { align: 'center' });
+
+    const { data: agents, error } = await _supabase.from('agents').select('*').order('name');
+    if (error) return alert("Erreur lors de la récupération : " + error.message);
+
+    const rows = agents.map(a => [
+        a.name,
+        a.date_entree ? new Date(a.date_entree).toLocaleDateString('fr-FR') : '---',
+        a.date_sortie ? new Date(a.date_sortie).toLocaleDateString('fr-FR') : '---',
+        a.service || '---',
+        a.type_contrat || '---',
+        a.is_active ? 'ACTIF' : 'SORTI'
+    ]);
+
+    doc.autoTable({
+        startY: 45,
+        head: [['Agent', 'Date Entrée', 'Date Sortie', 'Service', 'Contrat', 'Statut']],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor: [46, 49, 146], halign: 'center' },
+        styles: { fontSize: 9, cellPadding: 3 }
+    });
+
+    doc.save(`Effectif_Personnel_${new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')}.pdf`);
   }
 </script>
 </body>
