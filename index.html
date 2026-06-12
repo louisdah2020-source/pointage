@@ -778,9 +778,10 @@
 
   async function getAgents(onlyActive = false) { 
     let query = _supabase.from('agents').select('name, is_active').order('name');
-    if (onlyActive) query = query.eq('is_active', true);
+    // On récupère les agents dont is_active est vrai OU null (pour les anciens enregistrements)
+    if (onlyActive) query = query.or('is_active.eq.true,is_active.is.null');
     const { data, error } = await query;
-    if (error) console.error(error);
+    if (error) { console.error("Erreur Supabase lors de la récupération des agents:", error); return []; }
     return data ? data.map(a => a.name) : [];
   }
   
@@ -928,6 +929,8 @@
     const activeAgents = await getAgents(true); // Uniquement actifs pour le pointage
     const managers = await getManagers();
     
+    console.log(`Chargement des listes : ${agents.length} agents au total, ${activeAgents.length} actifs.`);
+    
     // 1. Liste déroulante du pointage (Vue Agent)
     const agentSelect = document.getElementById('agentName');
     const currentVal = agentSelect.value;
@@ -1011,7 +1014,8 @@
     const manualAgentSelect = document.getElementById('manualAgentSelect');
     if (manualAgentSelect) { // Vérifier si l'élément existe
       const currentSelectedManualAgent = manualAgentSelect.value;
-      manualAgentSelect.innerHTML = activeAgents.map(a => `<option>${a}</option>`).join('');
+      // Pour le pointage manuel RH, on affiche TOUS les agents (même inactifs) pour permettre les corrections
+      manualAgentSelect.innerHTML = agents.map(a => `<option>${a}</option>`).join('');
       if (currentSelectedManualAgent && agents.includes(currentSelectedManualAgent)) manualAgentSelect.value = currentSelectedManualAgent;
       else if (agents.length > 0) manualAgentSelect.value = agents[0]; // Sélectionner le premier agent par défaut
     }
