@@ -73,6 +73,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Déclencheur (Trigger) de sécurité
+DROP TRIGGER IF EXISTS trigger_security_device_check ON public.pointages;
 CREATE TRIGGER trigger_security_device_check
 BEFORE INSERT ON public.pointages
 FOR EACH ROW EXECUTE FUNCTION public.check_device_sharing();
@@ -124,6 +125,16 @@ CREATE TABLE IF NOT EXISTS public.device_commands (
     executed boolean DEFAULT false
 );
 
+  -- 8. Configuration de l'annonce affichée au démarrage
+  CREATE TABLE IF NOT EXISTS public.popup_config (
+    id integer PRIMARY KEY CHECK (id = 1),
+    title text NOT NULL DEFAULT 'Informations Importantes',
+    content text,
+    image_url text,
+    is_active boolean NOT NULL DEFAULT false,
+    updated_at timestamp with time zone NOT NULL DEFAULT now()
+  );
+
 -- Activation de la sécurité (RLS) et politiques par défaut
 -- Note : Pour le développement, nous autorisons toutes les opérations. 
 -- En production, restreignez ces accès aux utilisateurs authentifiés.
@@ -135,6 +146,7 @@ ALTER TABLE demandes_conges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE primes_retenues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_performance_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE device_commands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE popup_config ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON agents;
 CREATE POLICY "Allow all" ON agents FOR ALL USING (true) WITH CHECK (true);
@@ -156,3 +168,21 @@ CREATE POLICY "Allow all" ON agent_performance_stats FOR ALL USING (true) WITH C
 
 DROP POLICY IF EXISTS "Allow all" ON device_commands;
 CREATE POLICY "Allow all" ON device_commands FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all" ON popup_config;
+CREATE POLICY "Allow all" ON popup_config FOR ALL USING (true) WITH CHECK (true);
+
+-- Le frontend téléverse les images directement dans ce bucket.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('annonces', 'annonces', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DROP POLICY IF EXISTS "Public can read announcement images" ON storage.objects;
+CREATE POLICY "Public can read announcement images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'annonces');
+
+DROP POLICY IF EXISTS "Public can upload announcement images" ON storage.objects;
+CREATE POLICY "Public can upload announcement images"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'annonces');
