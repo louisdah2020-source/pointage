@@ -3,7 +3,7 @@
 $host = 'localhost'; // Souvent localhost chez LWS
 $dbname = 'media2630237';
 $username = 'media2630237';
-$password = 'Mediayab@2024';
+$password = 'Majoo@7001';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
