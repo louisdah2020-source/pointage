@@ -722,8 +722,8 @@
     const monthlyData = {};
     
     agentLogs.forEach(l => {
-      const d = new Date(l.iso_date);
-      const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      const [year, month] = l.iso_date.split('-');
+      const key = `${year}-${month}`;
       monthlyData[key] = (monthlyData[key] || 0) + parseFloat(l.total || 0);
     });
 
@@ -744,6 +744,13 @@
   const S_URL = 'https://lffhtllvajyiyunbqlci.supabase.co';
   const S_KEY = 'sb_publishable_QunC50RUP8s7CxdBg9eDWg_DKZLFWmJ';
   const _supabase = supabase.createClient(S_URL, S_KEY);
+
+  function toLocalISODate(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
   // La sécurité par appareil reste en localStorage car elle est liée à la machine physique
   if (!localStorage.getItem('device_logs')) localStorage.setItem('device_logs', JSON.stringify({})); // Journal des actions par appareil
@@ -791,9 +798,28 @@
     return data ? data.map(m => m.name) : [];
   }
 
+  async function fetchAllPointages(queryFactory) {
+    const pageSize = 500;
+    const pointages = [];
+
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await queryFactory()
+        .order('iso_date', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        console.error("Erreur Supabase lors du chargement des pointages:", error);
+        return null;
+      }
+
+      pointages.push(...data);
+      if (data.length < pageSize) return pointages;
+    }
+  }
+
   async function getPointages() {
-    const { data, error } = await _supabase.from('pointages').select('*').order('iso_date', { ascending: false }).order('id', { ascending: false });
-    if (error) console.error(error);
+    const data = await fetchAllPointages(() => _supabase.from('pointages').select('*'));
     return data ? data.map(p => ({ ...p, isoDate: p.iso_date })) : [];
   }
   
@@ -1078,9 +1104,9 @@
       if (h > 11.5) status = "ABSENCE (TARDIF)";
       else if (h >= 10.0833) status = "RETARD"; // 10.0833 correspond à 10h05
       
-      entry = { date: dateKey, iso_date: now.toISOString().split('T')[0], name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0, device_id: deviceFingerprint, ip_address: ipAddr };
+      entry = { date: dateKey, iso_date: toLocalISODate(now), name, arrivee: timeStr, pause: '', retour: '', depart: '', status, total: 0, device_id: deviceFingerprint, ip_address: ipAddr };
       const { error } = await _supabase.from('pointages').insert([entry]);
-      if (error) return alert("Erreur de sécurité : " + error.message);
+      if (error) return alert("Erreur Supabase lors de l'enregistrement : " + error.message);
       
       if (status !== "PRESENT") envoyerAlerteEmail(name, timeStr, status);
     } else {
@@ -1178,7 +1204,7 @@
     }
 
     const { data: performanceStats, error: perfError } = await _supabase.from('agent_performance_stats')
-        .select('*').eq('agent_name', name).eq('date', now.toISOString().split('T')[0]).maybeSingle();
+      .select('*').eq('agent_name', name).eq('date', toLocalISODate(now)).maybeSingle();
 
     if (perfError) console.error(perfError);
 
@@ -1359,7 +1385,7 @@
     document.getElementById('teamStatusList').innerHTML = teamHtml;
 
     const { data: managerPerfStats, error: mPerfError } = await _supabase.from('agent_performance_stats')
-        .select('*').eq('agent_name', name).eq('date', now.toISOString().split('T')[0]).maybeSingle();
+      .select('*').eq('agent_name', name).eq('date', toLocalISODate(now)).maybeSingle();
 
     if (mPerfError) console.error(mPerfError);
 
@@ -1673,7 +1699,7 @@
         if (!aDejaPointe) {
             absences.push({
                 date: dateKey,
-                iso_date: now.toISOString().split('T')[0],
+                iso_date: toLocalISODate(now),
                 name: agent,
                 arrivee: 'NON POINTE',
                 pause: '-', retour: '-', depart: '-',
@@ -1696,8 +1722,8 @@
     const monthlyMap = {};
     logs.forEach(p => {
       if (!p.iso_date) return;
-      const d = new Date(p.iso_date);
-      const key = `${p.name}-${d.getMonth()}-${d.getFullYear()}`;
+      const [year, month] = p.iso_date.split('-');
+      const key = `${p.name}-${parseInt(month, 10) - 1}-${year}`;
       monthlyMap[key] = (monthlyMap[key] || 0) + parseFloat(p.total || 0);
     });
 
@@ -1712,8 +1738,8 @@
       if (start && r.isoDate < start) return;
       if (end && r.isoDate > end) return;
       
-      const rDate = new Date(r.iso_date);
-      const key = `${r.name}-${rDate.getMonth()}-${rDate.getFullYear()}`;
+      const [year, month] = r.iso_date.split('-');
+      const key = `${r.name}-${parseInt(month, 10) - 1}-${year}`;
       const monthlyTotal = monthlyMap[key] || 0;
 
       html += `<tr>
@@ -1725,14 +1751,9 @@
         <td><span class="status-badge ${r.status === 'RETARD' || r.status.includes('ABSENCE') ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
         <td>${r.motif || '-'}</td>
         <td>
-          <div class="d-flex gap-1">
-            <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')" title="Modifier">
-              <i class="bi bi-pencil"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger py-0" onclick="supprimerPointage('${r.id}')" title="Supprimer">
-              <i class="bi bi-trash"></i>
-            </button>
-          </div>
+          <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')" title="Modifier">
+            <i class="bi bi-pencil"></i>
+          </button>
         </td>
       </tr>`;
       
@@ -1806,17 +1827,6 @@
       bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
       loadReports();
       showFeedback("Pointage mis à jour avec succès.");
-    }
-  }
-
-  async function supprimerPointage(id) {
-    if (!confirm("Voulez-vous vraiment supprimer ce pointage ? Cela libérera cet appareil pour un autre agent aujourd'hui.")) return;
-    
-    const { error } = await _supabase.from('pointages').delete().eq('id', id);
-    if (error) alert("Erreur lors de la suppression : " + error.message);
-    else {
-      showFeedback("Pointage supprimé avec succès.");
-      loadReports();
     }
   }
 
@@ -1963,7 +1973,7 @@
     const { data: managersData } = await _supabase.from('managers').select('*');
     const agents = [...(agentsData || []), ...(managersData || [])].sort((a, b) => a.name.localeCompare(b.name));
 
-    const { data: logs } = await _supabase.from('pointages').select('*').like('iso_date', `${prefix}%`);
+    const logs = await fetchAllPointages(() => _supabase.from('pointages').select('*').like('iso_date', `${prefix}%`)) || [];
 
     const { data: adjustments } = await _supabase.from('primes_retenues').select('*').eq('mois', month).eq('annee', year);
     

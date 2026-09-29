@@ -155,7 +155,13 @@ DROP POLICY IF EXISTS "Allow all" ON managers;
 CREATE POLICY "Allow all" ON managers FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow all" ON pointages;
-CREATE POLICY "Allow all" ON pointages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Public can read pointages" ON pointages;
+DROP POLICY IF EXISTS "Public can insert pointages" ON pointages;
+DROP POLICY IF EXISTS "Public can update pointages" ON pointages;
+CREATE POLICY "Public can read pointages" ON pointages FOR SELECT USING (true);
+CREATE POLICY "Public can insert pointages" ON pointages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public can update pointages" ON pointages FOR UPDATE USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE ON TABLE public.pointages TO anon, authenticated;
 
 DROP POLICY IF EXISTS "Allow all" ON demandes_conges;
 CREATE POLICY "Allow all" ON demandes_conges FOR ALL USING (true) WITH CHECK (true);
