@@ -281,6 +281,7 @@
           <button class="nav-link" onclick="switchTab('tab-gestion-detaillee', this)"><i class="bi bi-person-vcard"></i> Gestion</button>
           <button class="nav-link" onclick="switchTab('tab-compta', this)"><i class="bi bi-cash-stack"></i> Paie</button>
           <button class="nav-link" onclick="switchTab('tab-managers', this)"><i class="bi bi-person-badge"></i> Managers</button>
+          <button class="nav-link" onclick="switchTab('tab-archive', this)"><i class="bi bi-archive"></i> Archives</button>
         </nav>
       </div>
       <div class="card-body p-4">
@@ -456,6 +457,25 @@
                 <tr><th>Agent</th><th>Entrée/Sortie</th><th>Service</th><th>Contrat</th><th>Effectif</th><th>Paiement</th><th>Action</th></tr>
               </thead>
               <tbody id="detailedAgentListData"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Onglet Archives des anciens agents -->
+        <div id="tab-archive" class="hidden">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="mb-1">Archives des anciens agents</h5>
+              <small class="text-muted">Les dates d'entrée et de sortie correspondent au premier et au dernier pointage retrouvé.</small>
+            </div>
+            <span id="archiveAgentCount" class="badge bg-secondary">0 agent</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle" id="archiveAgentsTable">
+              <thead class="table-light">
+                <tr><th>Agent</th><th>Date d'intégration</th><th>Date de sortie</th></tr>
+              </thead>
+              <tbody id="archiveAgentsData"></tbody>
             </table>
           </div>
         </div>
@@ -1635,7 +1655,7 @@
 
   function switchTab(id, el) {
     // Masquer tous les onglets possibles pour éviter les superpositions
-    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-gestion-detaillee', 'tab-compta', 'tab-managers'].forEach(tabId => {
+    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-gestion-detaillee', 'tab-compta', 'tab-managers', 'tab-archive'].forEach(tabId => {
       const tabEl = document.getElementById(tabId);
       if (tabEl) tabEl.classList.add('hidden');
     });
@@ -1647,6 +1667,8 @@
       switchReportView('pointages'); 
     } else if (id === 'tab-gestion-detaillee') {
       loadDetailedAgentList();
+    } else if (id === 'tab-archive') {
+      loadArchivedAgents();
     } else if (id === 'tab-conges') {
       loadPendingLeaves();
     } else if (id === 'tab-agents') {
@@ -2632,6 +2654,93 @@
           <td><button class="btn btn-sm btn-outline-primary rounded-pill" onclick="ouvrirEditeurAgent('${a.id}')"><i class="bi bi-pencil"></i></button></td>
       </tr>`;
     }).join('');
+  }
+
+  async function loadArchivedAgents() {
+    const tbody = document.getElementById('archiveAgentsData');
+    const count = document.getElementById('archiveAgentCount');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Chargement des archives...</td></tr>';
+
+    const [agentsResult, managersResult] = await Promise.all([
+      _supabase.from('agents').select('name, is_active, date_entree, date_sortie'),
+      _supabase.from('managers').select('name')
+    ]);
+    const pointages = await fetchAllPointages(() => _supabase.from('pointages').select('name, iso_date'));
+
+    if (agentsResult.error || managersResult.error || !pointages) {
+      console.error('Erreur lors du chargement des archives:', agentsResult.error || managersResult.error);
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Impossible de charger les archives.</td></tr>';
+      count.textContent = 'Erreur';
+      return;
+    }
+
+    const normalizeName = name => name.trim().toLocaleUpperCase();
+    const agents = agentsResult.data || [];
+    const managers = new Set((managersResult.data || []).map(manager => normalizeName(manager.name)));
+    const activeAgents = new Set(agents
+      .filter(agent => agent.is_active !== false && !agent.date_sortie)
+      .map(agent => normalizeName(agent.name)));
+    const archived = new Map();
+
+    agents
+      .filter(agent => agent.is_active === false || agent.date_sortie)
+      .forEach(agent => archived.set(normalizeName(agent.name), {
+        name: agent.name,
+        firstDate: '',
+        lastDate: '',
+        fallbackFirstDate: agent.date_entree || '',
+        fallbackLastDate: agent.date_sortie || ''
+      }));
+
+    pointages.forEach(pointage => {
+      if (!pointage.name || !pointage.iso_date) return;
+      const key = normalizeName(pointage.name);
+      if (activeAgents.has(key) || managers.has(key)) return;
+
+      const record = archived.get(key) || {
+        name: pointage.name,
+        firstDate: '',
+        lastDate: '',
+        fallbackFirstDate: '',
+        fallbackLastDate: ''
+      };
+      if (!record.firstDate || pointage.iso_date < record.firstDate) record.firstDate = pointage.iso_date;
+      if (!record.lastDate || pointage.iso_date > record.lastDate) record.lastDate = pointage.iso_date;
+      archived.set(key, record);
+    });
+
+    const archiveRows = [...archived.values()].map(agent => ({
+      ...agent,
+      firstDate: agent.firstDate || agent.fallbackFirstDate,
+      lastDate: agent.lastDate || agent.fallbackLastDate
+    })).sort((a, b) =>
+      (b.lastDate || '').localeCompare(a.lastDate || '') || a.name.localeCompare(b.name, 'fr'));
+    count.textContent = `${archiveRows.length} agent${archiveRows.length > 1 ? 's' : ''}`;
+    tbody.replaceChildren();
+
+    if (archiveRows.length === 0) {
+      const row = tbody.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 3;
+      cell.className = 'text-center text-muted';
+      cell.textContent = 'Aucun ancien agent trouvé.';
+      return;
+    }
+
+    const formatDate = value => {
+      if (!value) return '—';
+      const [year, month, day] = value.slice(0, 10).split('-');
+      return `${day}/${month}/${year}`;
+    };
+
+    archiveRows.forEach(agent => {
+      const row = tbody.insertRow();
+      const nameCell = row.insertCell();
+      nameCell.className = 'fw-bold';
+      nameCell.textContent = agent.name;
+      row.insertCell().textContent = formatDate(agent.firstDate);
+      row.insertCell().textContent = formatDate(agent.lastDate);
+    });
   }
 
   async function verifierAbsencesProlongees() {
