@@ -1711,7 +1711,7 @@
     if (h < 11.5) return; // Trop tôt pour marquer les absences
 
     const dateKey = now.toLocaleDateString('fr-FR');
-    const agents = await getAgents();
+    const agents = await getAgents(true);
     let logs = await getPointages();
 
     const absences = [];
@@ -1738,11 +1738,22 @@
 
   async function loadReports() {
     const logs = await getPointages();
+    const { data: activeAgents, error: activeAgentsError } = await _supabase
+      .from('agents')
+      .select('name')
+      .or('is_active.eq.true,is_active.is.null');
+    if (activeAgentsError) console.error("Erreur lors du chargement des agents actifs:", activeAgentsError);
+    const activeAgentNames = new Set((activeAgents || []).map(agent => agent.name));
+    const reportLogs = activeAgentsError ? logs : logs.filter(pointage =>
+      pointage.status !== 'ABSENCE CONSTATED' ||
+      pointage.arrivee !== 'NON POINTE' ||
+      activeAgentNames.has(pointage.name)
+    );
     const tbody = document.getElementById('reportData');
     
     // Pré-calcul des totaux mensuels par agent pour optimiser l'affichage
     const monthlyMap = {};
-    logs.forEach(p => {
+    reportLogs.forEach(p => {
       if (!p.iso_date) return;
       const [year, month] = p.iso_date.split('-');
       const key = `${p.name}-${parseInt(month, 10) - 1}-${year}`;
@@ -1755,7 +1766,7 @@
     const start = document.getElementById('filterDateStart').value;
     const end = document.getElementById('filterDateEnd').value;
 
-    logs.forEach(r => {
+    reportLogs.forEach(r => {
       if (filter && r.name !== filter) return;
       if (start && r.isoDate < start) return;
       if (end && r.isoDate > end) return;
