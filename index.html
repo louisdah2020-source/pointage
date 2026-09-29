@@ -720,6 +720,7 @@
 <script>
   // --- CONFIGURATION & DONNEES ---
   let userIsAdmin = false;
+  let attendanceSummarySending = false;
   let userIsManager = false;
   let currentPayslipData = null; // Stockage pour l'export PDF individuel
   const ADMIN_PWD = "ADMIN123";
@@ -944,6 +945,20 @@
     if (userIsAdmin && currentHours === 19 && currentMinutes === 45 && lastSent !== todayStr) {
       localStorage.setItem('lastSummarySentDate', todayStr);
       envoyerRecapitulatifJournalier(true); // true pour mode silencieux
+    }
+
+    const attendanceSentDate = localStorage.getItem('lastAttendanceCheckSentDate');
+    const attendanceLastAttempt = Number(localStorage.getItem('lastAttendanceCheckAttemptAt') || 0);
+    if (userIsAdmin && !isWeekend && currentHours >= 11 && attendanceSentDate !== todayStr &&
+        !attendanceSummarySending && Date.now() - attendanceLastAttempt >= 5 * 60 * 1000) {
+      attendanceSummarySending = true;
+      localStorage.setItem('lastAttendanceCheckAttemptAt', Date.now().toString());
+      envoyerRecapitulatifRetardsAbsences(true)
+        .then(sent => {
+          if (sent) localStorage.setItem('lastAttendanceCheckSentDate', todayStr);
+        })
+        .catch(error => console.error("Erreur lors de la préparation du bilan de 11 h:", error))
+        .finally(() => { attendanceSummarySending = false; });
     }
 
     // Arrivée : On enlève la limite de 14h pour que les retardataires puissent toujours pointer leur arrivée
@@ -1860,6 +1875,58 @@
       bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
       loadReports();
       showFeedback("Pointage mis à jour avec succès.");
+    }
+  }
+
+  async function envoyerRecapitulatifRetardsAbsences(silent = true) {
+    const now = new Date();
+    const todayIso = toLocalISODate(now);
+    const today = now.toLocaleDateString('fr-FR');
+    const [{ data: agents, error: agentsError }, logs] = await Promise.all([
+      _supabase.from('agents').select('name, is_active, date_sortie').or('is_active.eq.true,is_active.is.null'),
+      fetchAllPointages(() => _supabase.from('pointages')
+        .select('name, iso_date, arrivee, status')
+        .eq('iso_date', todayIso))
+    ]);
+
+    if (agentsError || !logs) {
+      console.error("Impossible de préparer le bilan de 11 h:", agentsError);
+      return false;
+    }
+
+    const items = (agents || []).filter(agent => !agent.date_sortie).flatMap(agent => {
+      const agentLogs = logs.filter(log => log.name === agent.name);
+      const log = agentLogs.find(entry => entry.arrivee && entry.arrivee !== 'NON POINTE') || agentLogs[0];
+      let status = '';
+
+      if (!log || !log.arrivee || log.arrivee === 'NON POINTE' || (log.status || '').includes('ABSENCE')) {
+        status = 'ABSENT / NON POINTE';
+      } else if (log.status === 'RETARD') {
+        status = 'EN RETARD';
+      }
+
+      return status ? [{ name: agent.name, arrivee: log?.arrivee || '-', status }] : [];
+    });
+
+    try {
+      const response = await fetch('send_mail.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isAttendanceCheck: true,
+          date: today,
+          items,
+          recipients: ["informaticien@mediayab.com", "rh@mediayab.com", "b.nguessan@mediayab.com"]
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || `Erreur serveur (${response.status})`);
+      return true;
+    } catch (error) {
+      console.error("Erreur lors de l'envoi du bilan de 11 h:", error);
+      if (!silent) alert("Impossible d'envoyer le bilan : " + error.message);
+      return false;
     }
   }
 

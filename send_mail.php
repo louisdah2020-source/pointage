@@ -35,7 +35,41 @@ try {
         $mail->addEmbeddedImage('logo.jpg', 'logo_entreprise');
     }
 
-    if (isset($data['isSummary']) && $data['isSummary']) {
+    if (isset($data['isAttendanceCheck']) && $data['isAttendanceCheck']) {
+        $mail->Subject = "Bilan des retards et absences - " . htmlspecialchars($data['date']);
+
+        $rows = '';
+        foreach ($data['items'] as $item) {
+            $statusColor = $item['status'] === 'EN RETARD' ? '#d98e04' : '#d9534f';
+            $rows .= '
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 10px; font-weight: bold;">' . htmlspecialchars($item['name']) . '</td>
+                <td style="padding: 10px;">' . htmlspecialchars($item['arrivee']) . '</td>
+                <td style="padding: 10px; color: ' . $statusColor . '; font-weight: bold;">' . htmlspecialchars($item['status']) . '</td>
+            </tr>';
+        }
+        if (!$rows) {
+            $rows = '<tr><td colspan="3" style="padding: 12px; text-align: center; color: #00856a;">Aucun retard ni agent absent/non pointé à 11 h.</td></tr>';
+        }
+
+        $body = '
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #2e3192; color: #ffffff; padding: 20px; text-align: center;">
+                <img src="cid:logo_entreprise" alt="Logo" style="max-width: 120px; margin-bottom: 10px;">
+                <h2 style="margin: 0;">Bilan des retards et absences - ' . htmlspecialchars($data['date']) . ' (11 h)</h2>
+            </div>
+            <div style="padding: 20px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead><tr style="background-color: #f8f9fa;">
+                        <th style="padding: 10px; border-bottom: 2px solid #2e3192;">Agent</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #2e3192;">Arrivée</th>
+                        <th style="padding: 10px; border-bottom: 2px solid #2e3192;">Situation</th>
+                    </tr></thead>
+                    <tbody>' . $rows . '</tbody>
+                </table>
+            </div>
+        </div>';
+    } elseif (isset($data['isSummary']) && $data['isSummary']) {
         // --- MODE RÉCAPITULATIF JOURNALIER ---
         $mail->Subject = "Récapitulatif Journalier des Pointages - " . $data['date'];
         
