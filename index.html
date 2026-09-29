@@ -1799,9 +1799,14 @@
         <td><span class="status-badge ${r.status === 'RETARD' || r.status.includes('ABSENCE') ? 'bg-danger text-white' : 'bg-success text-white'}">${r.status}</span></td>
         <td>${r.motif || '-'}</td>
         <td>
-          <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')" title="Modifier">
-            <i class="bi bi-pencil"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary py-0" onclick="ouvrirEditeurPointage('${r.id}')" title="Modifier">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger py-0" onclick="supprimerPointage('${r.id}')" title="Supprimer ce doublon">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </td>
       </tr>`;
       
@@ -1853,6 +1858,26 @@
 
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
     editModal.show();
+  }
+
+  async function supprimerPointage(id) {
+    if (!confirm("Supprimer définitivement ce pointage ? Cette action est destinée à retirer un doublon.")) return;
+    const adminPassword = prompt("Code de suppression administrateur :");
+    if (!adminPassword) return;
+
+    try {
+      const response = await fetch('/api/delete-pointage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password: adminPassword })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Suppression refusée.');
+      showFeedback('Pointage supprimé.');
+      await loadReports();
+    } catch (error) {
+      alert("Erreur lors de la suppression : " + error.message);
+    }
   }
 
   // Fonction pour enregistrer les modifications
