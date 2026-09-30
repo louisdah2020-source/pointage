@@ -279,6 +279,7 @@
           <button class="nav-link" onclick="switchTab('tab-reports', this)"><i class="bi bi-bar-chart"></i> Rapports</button>
           <button class="nav-link" onclick="switchTab('tab-conges', this)"><i class="bi bi-calendar-event"></i> Congés</button>
           <button class="nav-link" onclick="switchTab('tab-gestion-detaillee', this)"><i class="bi bi-person-vcard"></i> Gestion</button>
+          <button class="nav-link" onclick="switchTab('tab-effectif', this)"><i class="bi bi-people-fill"></i> Effectif</button>
           <button class="nav-link" onclick="switchTab('tab-compta', this)"><i class="bi bi-cash-stack"></i> Paie</button>
           <button class="nav-link" onclick="switchTab('tab-managers', this)"><i class="bi bi-person-badge"></i> Managers</button>
           <button class="nav-link" onclick="switchTab('tab-archive', this)"><i class="bi bi-archive"></i> Archives</button>
@@ -457,6 +458,22 @@
                 <tr><th>Agent</th><th>Entrée/Sortie</th><th>Service</th><th>Contrat</th><th>Effectif</th><th>Paiement</th><th>Action</th></tr>
               </thead>
               <tbody id="detailedAgentListData"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Onglet Effectif actif -->
+        <div id="tab-effectif" class="hidden">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Agents faisant partie de l'effectif</h5>
+            <span id="activeAgentCount" class="badge bg-success">0 agent</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr><th>Agent</th><th>Matricule</th><th>Service</th><th>Contrat</th><th>Date d'entrée</th></tr>
+              </thead>
+              <tbody id="activeAgentsData"></tbody>
             </table>
           </div>
         </div>
@@ -1670,7 +1687,7 @@
 
   function switchTab(id, el) {
     // Masquer tous les onglets possibles pour éviter les superpositions
-    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-gestion-detaillee', 'tab-compta', 'tab-managers', 'tab-archive'].forEach(tabId => {
+    ['tab-agents', 'tab-reports', 'tab-conges', 'tab-gestion-detaillee', 'tab-effectif', 'tab-compta', 'tab-managers', 'tab-archive'].forEach(tabId => {
       const tabEl = document.getElementById(tabId);
       if (tabEl) tabEl.classList.add('hidden');
     });
@@ -1682,6 +1699,8 @@
       switchReportView('pointages'); 
     } else if (id === 'tab-gestion-detaillee') {
       loadDetailedAgentList();
+    } else if (id === 'tab-effectif') {
+      loadActiveAgentRoster();
     } else if (id === 'tab-archive') {
       loadArchivedAgents();
     } else if (id === 'tab-conges') {
@@ -2757,6 +2776,36 @@
           <td><button class="btn btn-sm btn-outline-primary rounded-pill" onclick="ouvrirEditeurAgent('${a.id}')"><i class="bi bi-pencil"></i></button></td>
       </tr>`;
     }).join('');
+  }
+
+  async function loadActiveAgentRoster() {
+    const tbody = document.getElementById('activeAgentsData');
+    const count = document.getElementById('activeAgentCount');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Chargement de l’effectif...</td></tr>';
+
+    const { data: agents, error } = await _supabase
+      .from('agents')
+      .select('name, matricule, service, type_contrat, date_entree, is_active, date_sortie')
+      .order('name');
+
+    if (error) {
+      console.error('Erreur lors du chargement de l’effectif:', error);
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Impossible de charger l’effectif.</td></tr>';
+      count.textContent = 'Erreur';
+      return;
+    }
+
+    const activeAgents = (agents || []).filter(agent => agent.is_active !== false && !agent.date_sortie);
+    count.textContent = `${activeAgents.length} agent${activeAgents.length > 1 ? 's' : ''}`;
+    tbody.innerHTML = activeAgents.length
+      ? activeAgents.map(agent => `<tr>
+          <td class="fw-bold text-dark">${agent.name}</td>
+          <td>${agent.matricule || '---'}</td>
+          <td>${agent.service || '---'}</td>
+          <td>${agent.type_contrat || '---'}</td>
+          <td>${agent.date_entree ? new Date(`${agent.date_entree}T00:00:00`).toLocaleDateString('fr-FR') : '---'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="text-center text-muted">Aucun agent dans l’effectif.</td></tr>';
   }
 
   async function loadArchivedAgents() {
